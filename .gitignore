@@ -1,0 +1,55 @@
+# --- Politica BYOA: nessun asset proprietario nel repository ---
+# Vedi docs/RECON.md. Solo codice, strumenti e documentazione di formato.
+
+*.iso
+extract/
+tools/iso_index.tsv
+
+# estratti e derivati riconoscibili
+*.lua.eu
+*.tpk
+*.dsb
+*.dpk
+*.edt
+*.sav
+*.bik
+*.wav
+*.dds
+*.pac
+*_PAC.GZ
+*.DAT
+EBOOT.BIN
+*.self
+*.elf
+
+# Report generati che INCORPORANO contenuto del gioco e quindi non sono
+# pubblicabili: lua_signatures.* contiene campioni di dialoghi letterali,
+# lua_tables.* i valori completi delle tabelle UI/item.
+# Si rigenerano in pochi secondi dai tool + la propria copia del disco.
+docs/lua_signatures.*
+docs/lua_tables.*
+
+# Materiale di terzi tenuto in locale come oracolo esterno: una guida di
+# GameFAQs, con cui in sessione 8 si sono validate le letture sui nemici e sui
+# gimmick. Non e' nostro e non e' del disco, quindi non si pubblica.
+docs/walkthrough/
+
+# Pubblicabili invece: RECON.md, STRATEGY.md e generated/*.h contengono solo
+# nomi di metodi, firme e nomi di costanti -- superficie API, non contenuto.
+#
+# I render invece SONO contenuto: una schermata composta porta le texture del
+# disco, e un fotogramma di mappa la sua geometria. Restano in locale.
+generated/**/*.png
+generated/*.png
+
+# build
+build/
+out/
+__pycache__/
+*.pyc
+
+# locale: impostazioni dell'editor e il brief di sessione
+.claude/
+PROMPT.md
+keys/
+*.keys

@@ -1,0 +1,23 @@
+                                                            
+167 mappe percorse in 62s
+in tutto     167 mappe, ingresso calpestabile in 167
+             celle raggiunte a piedi   221,227/352,278 = 63%
+             abitanti raggiunti            254/264     = 96%
+             passaggi raggiunti            303/512    , con l arrivo in piedi 281
+sotterranei  127 mappe, ingresso calpestabile in 127
+             celle raggiunte a piedi    71,084/112,634 = 63%
+             abitanti raggiunti            136/145     = 94%
+             passaggi raggiunti            157/301    , con l arrivo in piedi 142
+campagna      40 mappe, ingresso calpestabile in 40
+             celle raggiunte a piedi   150,143/239,644 = 63%
+             abitanti raggiunti            118/119     = 99%
+             passaggi raggiunti            146/211    , con l arrivo in piedi 139
+le peggiori:
+  field_7            41/1881   = 2%
+  d_60_2             11/364    = 3%
+  field_90          532/7196   = 7%
+  d_60_14            32/416    = 8%
+  d_7_1_1           124/1549   = 8%
+  field_32          492/5025   = 10%
+  d_80_1            195/1728   = 11%
+  d_80_2            665/5485   = 12%
