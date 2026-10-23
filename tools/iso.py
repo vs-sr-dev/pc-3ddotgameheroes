@@ -394,7 +394,7 @@ def cmd_manifest(iso: pathlib.Path, names: list[str]) -> int:
             print(f'  {i}/{len(nodes)}  {human(total)}...', end='\r')
     with MANIFEST.open('w', encoding='utf-8', newline='\n') as fh:
         fh.write('# PC-3Ddot - impronta del disco supportato.\n'
-                 '# 3D Dot Game Heroes (Europe), BLES-00860.\n'
+                 '# 3D Dot Game Heroes (Europe), BLES-00875.\n'
                  f'# {len(rows)} file, {total} byte. Percorsi UDF.\n'
                  'path\tsize\tsha256\n')
         for path, size, digest in rows:

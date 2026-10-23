@@ -1,11 +1,11 @@
-# --- Politica BYOA: nessun asset proprietario nel repository ---
-# Vedi docs/RECON.md. Solo codice, strumenti e documentazione di formato.
+# --- BYOA policy: no proprietary asset in this repository ---
+# See docs/RECON.md. Code, tools and format documentation only.
 
 *.iso
 extract/
 tools/iso_index.tsv
 
-# estratti e derivati riconoscibili
+# Disc files and what comes out of them
 *.lua.eu
 *.tpk
 *.dsb
@@ -22,34 +22,38 @@ EBOOT.BIN
 *.self
 *.elf
 
-# Report generati che INCORPORANO contenuto del gioco e quindi non sono
-# pubblicabili: lua_signatures.* contiene campioni di dialoghi letterali,
-# lua_tables.* i valori completi delle tabelle UI/item.
-# Si rigenerano in pochi secondi dai tool + la propria copia del disco.
+# Generated reports that EMBED game content and so cannot be published:
+# lua_signatures.* carries literal dialogue samples, lua_tables.* the full
+# values of the UI and item tables. Both regenerate in seconds from the tools
+# and your own disc.
 docs/lua_signatures.*
 docs/lua_tables.*
 
-# Materiale di terzi tenuto in locale come oracolo esterno: una guida di
-# GameFAQs, con cui in sessione 8 si sono validate le letture sui nemici e sui
-# gimmick. Non e' nostro e non e' del disco, quindi non si pubblica.
+# Third-party material kept locally as an external oracle: a GameFAQs guide,
+# used since session 8 to validate readings of enemies and gimmicks. It is
+# neither ours nor the disc's, so it is not published.
 docs/walkthrough/
 
-# Pubblicabili invece: RECON.md, STRATEGY.md e generated/*.h contengono solo
-# nomi di metodi, firme e nomi di costanti -- superficie API, non contenuto.
+# Publishable: RECON.md, STRATEGY.md and generated/*.h hold only method names,
+# signatures and constant names -- API surface, not content.
 #
-# I render invece SONO contenuto: una schermata composta porta le texture del
-# disco, e un fotogramma di mappa la sua geometria. Restano in locale.
+# Renders ARE content: a composed screen carries the disc's textures and a map
+# frame its geometry. They stay local.
 generated/**/*.png
 generated/*.png
 
-# build
+# Build: the recompiler's C++ is the game's code translated, and the decrypted
+# ELF is the game's executable. Neither is ever committed.
 build/
 out/
 __pycache__/
 *.pyc
 
-# locale: impostazioni dell'editor e il brief di sessione
-.claude/
-PROMPT.md
+# Key material for the SELF decryption: not game content, but not ours to
+# redistribute and not derivable from the disc. tools/self.py takes a path.
 keys/
 *.keys
+
+# Local: editor settings and the session brief
+.claude/
+PROMPT.md
