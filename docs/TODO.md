@@ -27,8 +27,8 @@ Where it stands:
 - **The kit, for this game**: SPU ELFs recompiled at their load address,
   lv2 SPU thread groups, SPURS task sets, tasks and event flags on a kernel
   of the runtime's own, `spu_printf`, the RSX's I/O map, reports and inline
-  transfers, audio notifications, `/dev_flash`, `/dev_hdd1`. Committed in
-  the kit, **not yet pushed** (item 6).
+  transfers, audio notifications, `/dev_flash`, `/dev_hdd1`. Checked on
+  PC-ROA and pushed (`ps3kit` 9408baf).
 - **This repository's own knowledge so far**: `tools/flash.py`, a declared
   stand-in for the system's MP3 decoder, which FMOD reads from
   `/dev_flash` and which the disc does not carry.
@@ -87,12 +87,13 @@ The free-space message drew its number with the digits overlapping
 textures), drawn by its code: a draw or a texture state the renderer gets
 wrong. Look at it when a screen with text comes back.
 
-### 6. The kit: check it on PC-ROA, then push.
+### 6. Shader programs compiled at first sight.
 
-PC-ROA, rebuilt on the kit of session 14, reaches its logos, its movie and
-its title at 30 frames in an unattended run. Character creation, the town
-and the first quest have to be played: once they are, push `ps3kit` and
-move PC-ROA's submodule to it.
+Shared with PC-ROA, where it is item 2 of its TODO: the kit compiles a
+program's GLSL when a draw first uses it, and a scene's first second can
+spend 400 ms on it. PC-ROA's play check of session 14 measured it again:
+171 of 182 seconds at 30 frames, every drop at a scene load. A program cache
+on disk belongs in the kit.
 
 ### 7. The tools still speak Italian.
 
@@ -266,6 +267,12 @@ availability query, the MP3 decoder read from `/dev_flash` (a stand-in,
 thread group; the free space on the HDD (the game asked for 871 MB, and drew
 its own message when it had none); the system cache. EISCONN and ENOTCONN had
 had ESTAT's and EALIGN's values in the kit since ROA.
+
+**The kit, checked on PC-ROA.** Rebuilt on the kit of this session, PC-ROA
+reached its logos, movie and title unattended, and the user played it
+through character creation, the town and the first quest: 171 of 182
+seconds at 30 frames, every drop at a scene load (shader compilation, as in
+its session 37). Then the kit was pushed and PC-ROA's submodule moved to it.
 
 **And where it stops.** After the save-data check, a black screen with the
 main loop running: item 1.
