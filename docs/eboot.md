@@ -12,7 +12,7 @@ here, from `build/eboot.elf` as [`self.py`](../tools/self.py) writes it:
 ```
 python -m ps3kit.elf build/eboot.elf --imports --opd
 python -m ps3kit.ppu build/eboot.elf --mix
-python -m ps3kit.recomp build/eboot.elf --out build/recomp --spu-module-bias 0x15670
+python -m ps3kit.recomp build/eboot.elf --out build/recomp --spu-module-bias 0x15670 --spu-module-bias 0x18990
 ```
 
 ## The shape
@@ -119,7 +119,7 @@ at all, which is the opposite of ROA, whose only SPU code was jobs.
 | `PS3_SPURS_BulletSolver_spu_release` | `00F8E780` | `0x3000` | 29,696 B | a SPURS task (Bullet solver) |
 | `fmodex_spu.elf` | `00F96580` | `0x80` | 66,880 B | FMOD Ex's mixer, *inferred* an SPU thread |
 | `fmodex` (NeuralTHX build) | `00FA8100` | `0x80` | 38,544 B | the same, another build |
-| 2 FMOD codecs, 17 FMOD effects | `00FB2780`... | vaddr + `0x15670` | | modules FMOD's mixer loads |
+| 2 FMOD codecs, 17 FMOD effects | `00FB2780`... | vaddr + `0x15670`, + `0x18990` | | modules FMOD's mixer loads |
 
 The 19 modules carry relocation sections (`.rela.text` and others), but
 **every one of them is empty**: the code is position-independent, and FMOD's
@@ -127,10 +127,13 @@ mixer copies a module into local store as it is, with only its `.fixup` words
 (data) patched. Where it goes was read off session 15's run: the PCM stream of
 the title music loaded `fmod_codec_raw` (its two segments, `0x2DC0` bytes)
 at LS `0x156F0`, its address `0x80` plus `0x15670`, and entered it at
-`0x15888`, its entry `0x218` plus the same. The recompiler translates all 19
-there (`--spu-module-bias 0x15670`); whether the effects go to the same place
-is for the run that first loads one to say: the runtime reports a module it
-finds elsewhere.
+`0x15888`, its entry `0x218` plus the same. Session 16's first cutscene
+after the prologue loaded `fmod_dsp_sfxreverb` elsewhere, at LS `0x18A10`
+(bias `0x18990`), alongside the codec: the mixer froze, and the runtime,
+which now looks for the bytes at the target in every module's image, named
+the module and its base. The recompiler translates all 19 at both biases
+(`--spu-module-bias 0x15670 --spu-module-bias 0x18990`); another placement
+will be reported the same way, its bias read off the report.
 That a task links at `0x3000` is the taskset policy module's layout; the
 "runs as" column is *inferred* from that and from the names, until the run
 confirms it.
@@ -233,5 +236,13 @@ back, for as long as it is left. Both are Bink movies, decoded by the
 game's own Bink on the PPU into three planes the renderer combines: what
 the frames show is recorded play. Played on, Start leads to character
 creation, the intro and NOW LOADING, and the first map waits for Edge zlib
-behind a SPURS lock-free queue (see [`TODO.md`](TODO.md), item 1). The extract needs the
-`trophy` set (`python tools/iso.py extract trophy`).
+behind a SPURS lock-free queue. The extract needs the `trophy` set
+(`python tools/iso.py extract trophy`).
+
+Session 16: with the PPU's side of SPURS lock-free queues and queues in the
+kit, Edge zlib's inflate task decompresses the map (`Field_18.ps3.pac.gz`)
+and Bullet's narrow-phase tasks compute the hits; the game **plays in the
+field**: walking, enemies, hits, map transitions, at 28-31 frames once the
+renderer keeps the vertex arrays it has been sent. Past the title the run is
+played by hand (the name entry needs the cursor moved to END). See
+[`TODO.md`](TODO.md).

@@ -8,16 +8,12 @@ disc survey in [`RECON.md`](RECON.md).*
 
 # Next session
 
-**Session 15 got past the black screen to the title and its demo.** The
-boot sequence was waiting for its trophies to install. With `sceNpTrophy` in
-the kit the game writes its system save, checks its game data and reaches
-the title screen: the logo over `TitleMovie_Omote_eu.bik`, with FMOD playing
-the title music through its SPU mixer and its PCM codec. Left alone it plays
-the demo play (`PlayDemoMovieUS.bik`, with its own sound) and comes back, as
-long as it is left; the user watched it through and heard both. Both are
-Bink movies, decoded by the game's own Bink. Played on, Start leads to
-character creation, the intro and NOW LOADING, and the first map stops on
-Edge zlib (item 1).
+**Session 16 reached the field, and it plays.** Past NOW LOADING the first
+map, `Field_18`, is inflated by Edge zlib's own SPU task through a SPURS
+lock-free queue; Bullet computes the hits through SPURS queues; the user
+walked, fought enemies and crossed from map to map, at the game's 30 frames
+once the renderer kept the vertex arrays it had already been sent (8 frames
+before).
 
 Where it stands:
 
@@ -25,113 +21,121 @@ Where it stands:
   [`format_self.md`](format_self.md).
 - **Census**: [`eboot.md`](eboot.md). 20,672 functions, 237 imports all
   named, 638 switch tables all resolved, 26 SPU ELFs, the 19 FMOD modules
-  now translated at the bias the run showed.
-- **The kit, for this game** (session 15): trophies from the disc's set,
-  the SPU segment table's layout, SPU modules as overlays, the texture flush
-  outside a draw's record, and a fault report that names the library.
+  translated at the bias the run showed.
+- **The kit, for this game** (session 16): SPURS lock-free queues (the
+  PPU's side, `ANY2ANY` read off Edge zlib's task) and queues (read off
+  Bullet's task); tasks abandoned when their taskset is shut down; task ids
+  reused; two indirect-branch forms of position-independent SPU code; vertex
+  arrays kept while their memory goes unwritten.
 - **This repository's own knowledge**: `tools/flash.py` (the MP3 decoder's
   stand-in), the `trophy` set of the extract, and the bias `0x15670`.
 
-The commands are at the end of [`eboot.md`](eboot.md); the extract needs the
-`trophy` set now (`python tools/iso.py extract trophy`).
+The commands are at the end of [`eboot.md`](eboot.md). Past the title the
+game is played by hand: the name entry needs the cursor moved to END, which
+`PS3KIT_PAD_PRESS` does not do.
 
-### 1. The first map waits for Edge zlib: SPURS lock-free queues.
-
-The user played past the title at the end of session 15: Start, then
-character creation (its music, the models drawn; see item 2), the
-parchment intro, NOW LOADING, and a black screen at 0 frames with the music
-going on. The game had opened the first map, `map/pac_data/Field_18.ps3.pac.gz`
-(the gzip sessions 1-13 inflated in Python), created a SPURS instance and the
-taskset `Zlib::Decode` with `edgezlib_inflate_task`, and pushed the job with
-`_cellSpursLFQueuePushBody`, which the kit answers `CELL_OK` and drops; the
-main thread then waits on an event flag (`cellSpursEventFlagWait`, lr
-`0x5CF478`) for an inflate that never comes. `_cellSpursLFQueueInitialize`
-and `cellSpursLFQueueAttachLv2EventQueue` came before it, with the same
-answer. Bullet's queue and barrier (`0x955000`) will come next.
-
-RPCS3 runs the firmware's library and has no implementation to read; the
-layout is in the task's own code (`edgezlib_inflate_task`, which pops the
-queue), and RPCS3 notes that `CellSpursLFQueue` is a `CellSyncLFQueue`. Read
-the task's side, then write the PPU's, as the event flags were done in
-session 14 (`PS3KIT_SPURS=1` shows the task's syscalls and events).
-
-### 2. Broken polygons on the character models.
+### 1. Broken polygons in character selection, and only there.
 
 In character creation some models have vertical lines of broken polygons,
-others are right (the user's report). The first models the engine draws.
-Three suspects, likeliest first, none checked:
+others are right. The user's observation in session 16 narrows it: **the
+same character drawn in the prologue is right**. So the model data and the
+skinning as such are sound; what differs is the selection screen: several
+models at once, turning, its camera, or a state set there. The suspects of
+session 15, revised:
 
-1. **Skinning in the vertex program.** The `ubyte4` is the bone index
-   ([`renderer.md`](renderer.md)); if the relative addressing of the
-   constants (the address register picking a bone's matrix) goes wrong for
-   some indices, the vertices on those bones land elsewhere. Which models
-   break would then depend on their bones.
-2. **A vertex or index base** (`VERTEX_DATA_BASE_OFFSET`, `BASE_INDEX`) the
-   renderer does not apply: one part's triangles take another part's
-   vertices.
-3. **A restart index in triangle strips**, not enabled: stray triangles
-   between strips. Least likely: session 2 found triangle lists on 100% of
-   the disc's models, though the running game may draw otherwise.
+1. **A vertex or index base** (`VERTEX_DATA_BASE_OFFSET`, `BASE_INDEX`) that
+   changes between the models drawn on one screen: one model's triangles take
+   another's vertices. Session 16 measured that the title's and the field's
+   draws are non-indexed triangle lists, 4,000 to 7,000 vertices at 32 bytes.
+2. **Skinning through the address register** for some bone indices only,
+   which a turning model would show and a walking one less.
+3. A **restart index** in triangle strips, least likely.
 
-The oracle is sessions 1-2's: these are voxel models, so **every face is
-axis-aligned**. Capture one broken draw (`PS3KIT_DRAWDUMP`, reaching the
-screen unattended with `PS3KIT_PAD_PRESS`) and find the triangles that are
-not: if the input positions are all aligned and only the transformed ones
-break, it is the skinning (1); if input triangles already join distant
-vertices, it is the indices or their base (2, 3). A screenshot helps too:
-lines that follow the joints (arms, legs) point to the skinning. Compare
-with the `DSBF` readings ([`format_dsb.md`](format_dsb.md)).
+The oracle stands: these are voxel models, so every face is axis-aligned.
+Capture one broken draw (`PS3KIT_DRAWDUMP`) and the same model's draw in the
+prologue, and compare their attributes, bases and constants.
 
-### 3. FMOD's effects, and the real MP3 decoder.
+### 2. What the renderer still spends.
 
-`fmod_codec_raw` runs at LS `0x156F0` (bias `0x15670`), found by the run.
-The 17 effects and the ADPCM codec are translated at the same bias, which
-no run has confirmed: a module copied elsewhere is reported once by the
-runtime (`... local store holds other code there`), and its bias goes on the
-recompiler's command line. `flashMP3.pic` is still the stand-in (the disc
-has no MP3).
+With the vertex arrays kept, the field runs at 28-31 frames: the FIFO thread
+captures for ~300 ms of every 30 frames, the renderer works ~1,000 ms. A
+probe in session 16 split that thousand: **~650 ms setting up vertices**,
+~180 the render targets, ~70 the textures, ~55 the draw calls. About 7 MB a
+frame of arrays is still sent: the ones the game rewrites every frame,
+copied without being watched. Look at which they are, and at the per-attribute
+VAO calls. One run in the same field was held to 8 frames with the renderer
+busy for 3.5 s of every 30 frames *inside* its GL calls, and the next ran at
+30 with the same work: if that comes back, the GPU or the driver is where to
+look, not the capture.
 
-### 4. Which copy of the scripts the game runs.
+### 3. How the field looks.
+
+The user's report at the end of session 16, playing on past the prologue:
+
+- **The water is missing**, as it always has been. Session 14 left the
+  `Water` SPURS instance's `water_task` waiting on its event flag; the game
+  sets a flag every frame (`cellSpursEventFlagSet(30085A80, 1)`). See whether
+  the task wakes, and what it writes: if the water surface is its output, the
+  missing water is a task that never finishes a frame.
+- **A dark cast outdoors**; interiors look right. Each outdoor frame goes down
+  a chain of surfaces, 1280x720 to 640x360, 320x180, 160x90 and 80x45: a
+  luminance or bloom pass, which interiors may not use. Candidates: `rsxgl:
+  texture format 90 not drawn` (offset `00AF3D80`, format `0x19029`), seen on
+  reaching the field, and `rsx: fragment program at C1533D80 (local 1533D80)
+  without an end, or outside guest memory`.
+- **An enemy's defeat burst flashes the whole screen**: particles grown to
+  cover it, or a blend or depth state wrong for that draw.
+- **The coins are rainbow-coloured**: a texture or a colour read wrong for
+  that model.
+
+`PS3KIT_DRAWDUMP` on the draw, `PS3KIT_TEXDUMP` for the textures.
+
+### 4. FMOD's modules, and the real MP3 decoder.
+
+`fmod_codec_raw` runs at LS `0x156F0` (bias `0x15670`), and
+`fmod_dsp_sfxreverb` at `0x18A10` (bias `0x18990`, the first cutscene after
+the prologue); the 19 modules are translated at both. A module copied
+anywhere else stops the mixer, and the game with it; the runtime then names
+the module and its base (`local store holds ... there, copied to ...`), and
+the bias goes on the recompiler's command line. `flashMP3.pic` is still the
+stand-in (the disc has no MP3).
+
+### 5. Which copy of the scripts the game runs.
 
 The EBOOT carries 1,488 Lua sources, 112 different from the disc's
-`all.lua.eu` (see [`eboot.md`](eboot.md)). Through the logos, the title and
-the demo no `.lua.eu` is opened. Find the loader (the `-- Start` / `-- End`
-markers, or the Lua 5.1.3 `lua_load` it calls) and see where its chunks come
-from. The answer decides how the scripts are modded.
+`all.lua.eu` (see [`eboot.md`](eboot.md)). Find the loader (the `-- Start` /
+`-- End` markers, or the Lua 5.1.3 `lua_load` it calls) and see where its
+chunks come from. The answer decides how the scripts are modded.
 
-### 5. SPURS barriers and the other queues.
+### 6. SPURS barriers.
 
-Item 1 does the lock-free queue for Edge zlib; Bullet's tasks (`0x955000`)
-use a queue and a barrier, which answer `CELL_OK` and do nothing too.
+Bullet initialises one barrier per taskset (`cellSpursBarrierInitialize`, 3
+tasks), which still answers `CELL_OK` and does nothing; nothing has needed it
+yet. Its layout is in Bullet's task, as the queue's was.
 
-### 6. A glitch in the game's own text.
+### 7. A glitch in the game's own text.
 
 The free-space message drew its number with the digits overlapping
 ("8 7 1 M|6 9s2 0e2ded"). The text is the game's (`Font.bin` and the font
 textures), drawn by its code: a draw or a texture state the renderer gets
-wrong. Look at it when a screen with text comes back (the title's
-copyright line looked right).
+wrong. Look at it when a screen with text comes back.
 
-### 7. Shader programs compiled at first sight.
+### 8. Shader programs compiled at first sight.
 
 Shared with PC-ROA (item 2 of its TODO): a program cache on disk belongs in
-the kit.
+the kit. The field compiles 50-70 programs as it comes into view.
 
-### 8. The tools still speak Italian.
+### 9. The tools still speak Italian.
 
 The documents are in English since session 14; the Python tools' docstrings,
 comments and messages are not. `tools/api_domains.py` writes
-`api_domains.md` and would bring the Italian back if run. `tools/iso.py`
-has its first English lines (the `trophy` set).
+`api_domains.md` and would bring the Italian back if run.
 
-### 9. An instrument worth keeping.
+### 10. An instrument worth keeping.
 
-Session 15 found the stuck state with a watcher that reads guest memory
-from outside the running process (`ReadProcessMemory` on `g_mem`, which
-`nm` locates), at full speed: gdb under Windows slowed the game twenty-fold
-and never reached the save check. It lives in the session's scratch space;
-it belongs in the kit beside `gdb_trace.py`, with `g_mem`'s address found
-by `nm` instead of written in.
+Session 15's watcher that reads guest memory from outside the running
+process (`ReadProcessMemory` on `g_mem`, which `nm` locates) belongs in the
+kit beside `gdb_trace.py`, with `g_mem`'s address found by `nm`.
 
 ### Alongside, every session.
 
@@ -228,6 +232,95 @@ settled when someone next works in each document:
 ---
 
 # Log
+
+## Session 16 - 2026-10-23
+
+**From NOW LOADING to the field, played, at 30 frames.**
+
+**Edge zlib's queue.** The game initialises its inflate queue with
+`_cellSpursLFQueueInitialize(spurs | 1, queue, buffer, 32, depth, 3)`: a
+lock-free queue of the instance, direction `ANY2ANY`, 16 elements. RPCS3
+runs the firmware's library for these and leaves the `ANY2ANY` functions of
+`cellSync` empty, so the layout was read off the consumer: Edge zlib's
+inflate task pops with its own copy of the library (`0x94B0` reserves,
+`0x9398` completes, `0x9A10` and `0x9EA0` underneath). What it shows: the
+`CellSyncLFQueue` layout, pointers modulo twice the depth, a 16-bit
+completion bitmap; in `ANY2ANY` the two packs of waiters' counters (next to
+wake, woken and taken, next free place; three 5-bit fields modulo 30) live in
+the pop and push wait flags at `+4` and `+0xC`, and `+0x30` and `+0x50` hold
+`0xFFFF`. A task that finds the queue empty leaves `(workload << 8) | task`
+in `+0x32` and waits for a signal (syscall 2); the wake goes through the
+instance's `wklInfo1[workload].arg`, the taskset. The kit pushes from the PPU
+under the SPUs' line lock, completes, and signals the first waiter.
+
+**Two jumps the recompiler did not know.** The task is position-independent
+code: `brsl $2, next; ai $2, $2, 8; bi $2` (a branch over the next words), and
+two switches whose tables hold offsets from the table itself
+(`ila $t, TABLE; a $t, $t, $126; ... a $r, $entry, $t; bi $r`), at `0x4CAC`
+(29 states, the inflate state machine) and `0x64CC` (4). The recompiler now
+adds both forms to an SPU ELF's dispatch targets; only this task has them.
+
+**The join that never came.** The map inflated, the event flag came back,
+and the game shut the taskset down and joined it, while the task waited in
+the queue for a second element. The system no longer schedules a shut-down
+workload, so a waiting task is simply never resumed; the kit now ends a task
+that waits or yields in a shut-down taskset, without an exit code.
+
+**Bullet.** Past the map, the instance `PhysXManager` (3 SPUs) and two
+tasksets `BulletTaskset`, each with three queue pairs and a barrier. A hit
+froze the game: per collision job it creates a task, pushes the job on a
+queue (`cellSpursQueuePushBody(queue, element, 1)`) and polls the result
+(`cellSpursQueuePopBody(queue, buffer, 0)`), and both answered `CELL_OK`
+having done nothing. `CellSpursQueue` is not `CellSyncQueue`; RPCS3 has
+nothing on it. Bullet's narrow-phase task gave it: a pop at `0x2B630`
+(begin, a DMA of the element) and `0x2BB28` (end), a push at `0x2AE18` and
+`0x2B310`. `+0` the pop pointer and `+4` the push pointer, modulo twice the
+depth and stored complemented while an operation is under way, `+8` size,
+`+0xC` depth, `+0x10` the buffer, `+0x18` the SPU port for a waiting PPU
+(`sys_spu_thread_throw_event`), `+0x1C` the direction, `+0x20`/`+0x30` the
+waiting poppers' and pushers' count and task ids, `+0x40`/`+0x50` their
+workloads, `+0x60` the taskset. The kit pops and pushes whole on the PPU and
+wakes the first waiter as a task would. Then a freeze while walking: task
+ids were never reused, and the 128th creation failed; an exited task now
+frees its id.
+
+**Seven frames, and where they went.** The profiler put the field's time on
+the capture: 3.9 s of every 30 frames, 3.3 GB sent. The draws are honest,
+non-indexed triangle lists of 4,000-7,000 voxel vertices, ~160 KB each, ~690
+a frame, but every one was copied, byte-swapped and uploaded every frame.
+Vertex arrays are now kept as textures are, by address, length and format,
+while `memwatch` sees their memory unwritten, with a flush past 256 MB; an
+array written three times running is copied every time without being
+watched. The capture fell to ~300 ms, the sent bytes to ~220 MB. One run then
+stalled inside the renderer's GL calls at 8 frames; the next, same work, ran
+at 30, and a probe split the renderer's time (item 2).
+
+**The cutscene after the prologue.** The game froze there: FMOD's mixer had
+copied the reverb, `fmod_dsp_sfxreverb`, to LS `0x18A10` and branched into it,
+and the modules had been translated at the PCM codec's bias only. The
+runtime now looks for the bytes at such a target in every module's image and
+names the module and its base; the reverb's bias, `0x18990`, went on the
+recompiler's command line, and the game went on.
+
+**The kit, checked on PC-ROA.** PC-ROA's generated C++ came out identical
+with this session's recompiler (143 files). Its first unattended run on the
+new runtime fell below 30 frames in two stretches, the renderer stalled in
+its GL calls with the same work: the first vertex cache gave a key, and a
+buffer, to an array found unwritten by the next draw, so an array written
+once a frame and drawn twice made and dropped a buffer every frame. A control
+build of session 15's kit held 30 on the same machine, and so did the new kit
+with the cache switched off. Keys now go only to arrays found unwritten in a
+later frame, and a key whose array is written again is let go at once:
+PC-ROA held 29.9 over five minutes, the control's figure. Then the user played
+it on the final kit (character creation, the town, the first quest): all as
+before, 194 of 203 stretches of a second at 30 frames, the drops at scene
+loads. The kit was pushed and PC-ROA's submodule moved to it.
+
+**What runs.** The field of `Field_18` and the maps around it, a dungeon
+(`D_21_1`), the first cutscene after the prologue and on: walking, enemies,
+hits, map transitions, at 28-31 frames, played by the user. The character in
+the prologue is drawn right; only character selection breaks its models
+(item 1). What still looks wrong is item 3.
 
 ## Session 15 - 2026-10-23
 
