@@ -1,153 +1,154 @@
-# `MAPCOLLISION/*.DPK` — la collisione delle mappe
+# `MAPCOLLISION/*.DPK` — the maps' collision
 
-**Stato: risolto.** Layout, sistema di riferimento e uso.
+**Status: solved.** Layout, coordinate system and use.
 Parser: [`tools/dpk.py`](../tools/dpk.py).
 
-171 file in `PS3_GAME/USRDIR/DATA/MAPCOLLISION/`, **5,4 MB in tutto**: una mesh
-di triangoli per mappa, 256.985 vertici e 420.301 triangoli. È un centesimo dei
-poligoni con cui le stesse mappe si disegnano (30,9 milioni), ed è il muro che
-il gioco usa davvero.
+171 files in `PS3_GAME/USRDIR/DATA/MAPCOLLISION/`, **5.4 MB in all**: one
+triangle mesh per map, 256,985 vertices and 420,301 triangles. That is a
+hundredth of the polygons the same maps are drawn with (30.9 million), and it
+is the wall the game actually uses.
 
 ```
-python tools/dpk.py check              171 su 171, fino all'ultimo byte
+python tools/dpk.py check              171 of 171, to the last byte
 python tools/dpk.py info <file.DPK>
 ```
 
-## Formato
+## Format
 
 ```
-+0x00 u32                   numero di mesh
-poi n coppie (u32, u32)     offset e dimensione di ogni mesh
++0x00 u32                   number of meshes
+then n pairs (u32, u32)     offset and size of each mesh
 
-ogni mesh, al proprio offset:
-  +0x00 u32                 numero di FLOAT, cioè 3 × i vertici
-  poi n float32 big-endian  (x, y, z)
-  +0x00 u32                 numero di indici
-  poi n u16 big-endian      tre per triangolo
+each mesh, at its own offset:
+  +0x00 u32                 number of FLOATS, that is 3 × the vertices
+  then n float32 big-endian (x, y, z)
+  +0x00 u32                 number of indices
+  then n u16 big-endian     three per triangle
 ```
 
-Il numero di mesh va da 1 a 5; 301 mesh in tutto sui 171 file.
+The number of meshes runs from 1 to 5; 301 meshes in all across the 171 files.
 
-### Perché è certo
+### Why it is certain
 
-Lo stesso oracolo che ha risolto `MAP_ALIGNMENT`: percorrendo ogni mesh dal suo
-offset si deve finire **esattamente** sulla dimensione dichiarata, e l'ultima
-sull'ultimo byte del file. Succede in **171 file su 171**, per tutte e 301 le
-mesh. Con un campo letto male si esce dal file al primo blocco.
+The same oracle that solved `MAP_ALIGNMENT`: walking each mesh from its
+offset has to end **exactly** at the declared size, and the last one on the
+last byte of the file. It does in **171 files out of 171**, for all 301
+meshes. With one field misread, the walk leaves the file at the first block.
 
-L'unico campo che non si indovina è il conto dei **float** invece dei vertici.
-In `PLANE.DPK` — il file più piccolo, 80 byte — vale 12 per quattro vertici;
-letto come numero di vertici manda l'offset degli indici 96 byte oltre la fine.
+The only field that cannot be guessed is the count of **floats** rather than
+vertices. In `PLANE.DPK` — the smallest file, 80 bytes — it is 12 for four
+vertices; read as a vertex count, it sends the offset of the indices 96 bytes
+past the end.
 
-`PLANE.DPK` è anche il posto giusto da cui cominciare a leggere questo formato:
-un quadrato di 102,4 unità (64 caselle) fatto di 4 vertici e 2 triangoli, cioè
-il caso minimo in cui ogni campo è visibile a occhio nudo.
+`PLANE.DPK` is also the right place to start reading this format: a square of
+102.4 units (64 cells) made of 4 vertices and 2 triangles, the minimal case in
+which every field is visible to the naked eye.
 
-## Il sistema di riferimento
+## The coordinate system is the `.pac`'s
 
-Lo **stesso** del `.pac`: origine al centro della mappa, X verso destra, Z verso
-l'alto della griglia. Non c'è niente da convertire.
+The **same** as the `.pac`: origin at the centre of the map, X to the right,
+Z towards the top of the grid. There is nothing to convert.
 
-Si verifica a confronto, mappa per mappa:
+It checks out side by side, map by map:
 
 ```
 DUNGEON_21_1   dpk  x [-20.0, 18.4]   z [-18.4, 20.0]
-               pac  x [-20.0, 18.4]   z [-18.4, 20.0]      griglia 24 × 24
+               pac  x [-20.0, 18.4]   z [-18.4, 20.0]      grid 24 × 24
 ```
 
-Le due estensioni coincidono, e coincidono con `w × 1,6`. Dove differiscono —
-`DUNGEON_1_2` ha il `.pac` più largo di 3,3 unità — è la geometria decorativa
-che sporge oltre la collisione, non un disallineamento.
+The two extents coincide, and they coincide with `w × 1.6`. Where they
+differ — `DUNGEON_1_2` has a `.pac` 3.3 units wider — it is decorative
+geometry sticking out past the collision, not a misalignment.
 
-## I nomi
+## The names do not match the maps'
 
-Non concordano con quelli delle mappe: la collisione di `D_1_1_1` si chiama
-`DUNGEON_1_1_1.DPK`, quella di `FIELD_9` si chiama `FIELD_09.DPK`, e in un file
-lo sviluppatore ha scritto **`DANGEON_8_2.DPK`**. Il refuso è sul disco
-stampato, quindi il parser lo gestisce insieme alla forma corretta.
+The collision of `D_1_1_1` is called `DUNGEON_1_1_1.DPK`, that of `FIELD_9` is
+called `FIELD_09.DPK`, and in one file the developer wrote
+**`DANGEON_8_2.DPK`**. The typo is on the pressed disc, so the parser handles
+it alongside the correct spelling.
 
-`PLANE.DPK` è l'unico senza una mappa corrispondente: è il pavimento di prova
-degli sviluppatori. **170 mappe su 170** hanno la loro collisione.
+`PLANE.DPK` is the only one without a matching map: it is the developers' test
+floor. **170 maps out of 170** have their collision.
 
-## Quanto è alto il mondo
+## How tall the world is
 
-Va misurato, non assunto, ed è costato caro assumerlo (vedi [`walk.md`](walk.md)):
+It has to be measured, not assumed, and assuming it cost dearly (see
+[`walk.md`](walk.md)):
 
 ```
-y globale su 171 file:  [-4,35 ; 51,20]
-scendono sotto zero:    69 file su 171
-superano 25,6:          2 file        (FIELD_07 è una montagna e arriva a 51,2)
+global y over 171 files:  [-4.35 ; 51.20]
+going below zero:         69 files of 171
+above 25.6:               2 files        (FIELD_07 is a mountain and reaches 51.2)
 ```
 
-E lo zero non è un fondo pulito nemmeno dove sembra: il pavimento di `d_1_2` sta
-a `−0,000002`, cioè lo scarto di un `float32` passato per una somma
-baricentrica. Chi tronca a zero non perde un margine, perde il pavimento.
+And zero is not a clean floor even where it looks like one: the floor of
+`d_1_2` sits at `−0.000002`, the residue of a `float32` that went through a
+barycentric sum. Truncating to zero does not lose a margin, it loses the floor.
 
-## Da mesh a colonne
+## From meshes to columns
 
-Chi cammina non ha bisogno di triangoli ma di due risposte per cella — dove si
-posa il piede, e cosa c'è all'altezza del corpo. `dpk.seed()` semina i
-triangoli di punti a passo di un quarto di casella, che è la risoluzione delle
-colonne di [`walk.md`](walk.md), e restituisce con ogni punto la **normale del
-suo triangolo**.
+Something that walks does not need triangles but two answers per cell — where
+the foot comes down, and what is there at body height. `dpk.seed()` seeds the
+triangles with points at a quarter-cell pitch, which is the resolution of the
+columns in [`walk.md`](walk.md), and returns each point with **the normal of
+its triangle**.
 
-La normale non è un di più: distingue un pavimento da un muro, e presa dal
-triangolo invece che dal vertice è esatta invece che interpolata.
+The normal is not an extra: it tells a floor from a wall, and taken from the
+triangle rather than the vertex it is exact rather than interpolated.
 
-Seminare invece di prendere i vertici è necessario perché in una mesh di
-collisione i triangoli **sono grandi**: un pavimento di venti caselle è due
-triangoli, e i suoi soli vertici lascerebbero vuote tutte le celle in mezzo.
+Seeding instead of taking the vertices is necessary because in a collision
+mesh the triangles **are large**: a floor twenty cells across is two
+triangles, and its vertices alone would leave every cell in between empty.
 
-**Quanto grandi**: in `FIELD_07` il lato più lungo misura 190,3 unità, cioè 119
-caselle, e 2.238 triangoli su 6.747 superano le 38,4 unità. Un tetto di 96
-suddivisioni — che sembrava la scelta prudente — rendeva il passo di semina di
-quei triangoli 2,0 unità, **più largo di una casella**, e lasciava quindi
-scoperte celle intere: fra queste quattordici punti d'ingresso di mappa, che
-risultavano non calpestabili. Senza tetto costa il 27% di punti in più su tutto
-il disco (139 milioni contro 109) e non lascia buchi; la semina va a gruppi
-perché una mappa sola arriva a 22 milioni di punti.
+**How large**: in `FIELD_07` the longest edge measures 190.3 units, that is
+119 cells, and 2,238 triangles out of 6,747 exceed 38.4 units. A cap of 96
+subdivisions — which looked like the cautious choice — made the seeding pitch
+of those triangles 2.0 units, **wider than a cell**, and so left whole cells
+uncovered: among them fourteen map entry points, which came out as not
+walkable. Without the cap it costs 27% more points across the disc (139
+million against 109) and leaves no holes; seeding goes in batches because a
+single map reaches 22 million points.
 
-## Il fondale
+## The backdrop
 
-Sotto ogni mappa di campagna c'è un unico quadrilatero piatto steso da parte a
-parte, a −3,2 o giù di lì. In `FIELD_22` sono **due triangoli** per 10.368
-caselle su una mappa che ne ha 16.384; in `FIELD_30` sono 32 triangoli per
-13.628 caselle.
+Under every overworld map there is a single flat quad stretched from edge to
+edge, at about −3.2. In `FIELD_22` it is **two triangles** covering 10,368
+cells, on a map that has 16,384; in `FIELD_30` it is 32 triangles covering
+13,628 cells.
 
-Guarda in su, quindi la lettura delle normali lo prende per un pavimento — solo
-che sopra ha metri di roccia. Come si riconosce, e cosa se ne ricava (la
-maschera dell'acqua), sta in [`walk.md`](walk.md).
+It faces up, so reading the normals takes it for a floor — except that it has
+metres of rock above it. How to recognise it, and what can be got out of it
+(the water mask), is in [`walk.md`](walk.md).
 
-## Cosa cambia averlo
+## What having it changes
 
-`view.py walkabout` percorre a piedi tutte le mappe. Con le colonne ricavate
-dalla geometria di rendering, e con le colonne ricavate dal `.DPK`:
+`view.py walkabout` walks every map on foot. With the columns taken from the
+render geometry, and with the columns taken from the `.DPK`:
 
-| | geometria | `.DPK` |
+| | geometry | `.DPK` |
 |---|---:|---:|
-| celle raggiunte a piedi | 18% | **63%** |
-| abitanti raggiunti | 65% | **96%** |
-| passaggi raggiunti | 194 | **303** |
+| cells reached on foot | 18% | **63%** |
+| inhabitants reached | 65% | **96%** |
+| passages reached | 194 | **303** |
 
-E soprattutto: il divario fra sotterranei e campagna — 26% contro 13% di celle,
-76% contro 51% di abitanti — **è sparito**. Con la collisione vera le due
-famiglie stanno entrambe al 63% di celle, e la campagna arriva al 99% di
-abitanti raggiunti.
+Above all, the gap between dungeons and the overworld — 26% against 13% of
+cells, 76% against 51% of inhabitants — **is gone**. With the real collision
+both families stand at 63% of cells, and the overworld reaches 99% of
+inhabitants.
 
-Attenzione però a non attribuire tutto a questo file: metà del guadagno viene
-dall'aver riconosciuto che il gradino vale **una casella**, che è una scoperta
-indipendente (vedi [`walk.md`](walk.md)). Il `.DPK` da solo portava gli abitanti
-dal 65% al 78%.
+But not all of it is this file's doing: half the gain comes from recognising
+that a step is worth **one cell**, which is an independent finding (see
+[`walk.md`](walk.md)). The `.DPK` on its own took inhabitants from 65% to 78%.
 
-## Cosa manca
+## What is missing
 
-- **Le mesh multiple.** Un file su cinque ne ha più di una (fino a 5) e non è
-  chiaro cosa le separi: aree, materiali di collisione, o solo il limite di
-  65.536 vertici degli indici a 16 bit. Le mappe con più mesh sono anche le più
-  grandi, il che fa pensare alla terza.
-- **I materiali di collisione.** Non c'è nessun campo per triangolo: né tipo di
-  terreno, né suono di passo, né "acqua". Se esistono stanno altrove — e per
-  l'acqua stanno davvero altrove, nel tag di regione della griglia logica.
-- **Il verso dei triangoli.** Qui si usa la normale geometrica e basta; se il
-  formato dichiarasse un verso, si potrebbe distinguere il solido dal
-  bidimensionale.
+- **Multiple meshes.** One file in five has more than one (up to 5), and it is
+  not clear what separates them: areas, collision materials, or only the
+  65,536-vertex limit of 16-bit indices. The maps with several meshes are also
+  the largest, which points to the third.
+- **Collision materials.** There is no per-triangle field: no terrain type, no
+  footstep sound, no "water". If they exist they live elsewhere — and for water
+  they really do live elsewhere, in the region tag of the logical grid.
+- **Triangle winding.** Only the geometric normal is used here; if the format
+  declared a winding, solid geometry could be told apart from flat,
+  two-dimensional surfaces.

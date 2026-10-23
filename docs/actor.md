@@ -1,45 +1,49 @@
-# I nemici, eseguiti dagli script del disco — `tools/actor.py`
+# Enemies, run by the disc's own scripts — `tools/actor.py`
 
-*Sessione 11.* Il compagno di [`host.md`](host.md) per un secondo dominio: là
-gli eventi, qui gli attori. La tesi è la stessa, e stavolta è più difficile da
-credere prima di vederla — **il moto dei nemici di 3D Dot Game Heroes è scritto
-in Lua, sul disco, e si può eseguire**.
+*Session 11.* The companion of [`host.md`](host.md) for a second domain: there
+the events, here the actors. The thesis is the same, and this time it is
+harder to believe before seeing it — **the movement of 3D Dot Game Heroes'
+enemies is written in Lua, on the disc, and it can be run**.
 
-## Quello che il TODO ha detto per tre sessioni
+## What the TODO said for three sessions
 
-> Il pattugliamento non è dichiarato in chiaro da nessuna parte, e resta non
-> implementato invece che inventato.
+> Patrolling is not declared in the clear anywhere, and it stays unimplemented
+> rather than invented.
 
-Era vero dei posti in cui era stato cercato — `MapParameter`, `GameParamData`,
-l'API Lua, i dodici attori del minigioco Block Defence — e falso del disco. Il
-moto sta in `all.lua.eu`, che **non è un file**: è la concatenazione di
-**1.486 sorgenti**, con l'albero delle cartelle lasciato nei commenti.
+That was true of the places it had been looked for — `MapParameter`,
+`GameParamData`, the Lua API, the twelve actors of the Block Defence minigame
+— and false of the disc. The movement is in `all.lua.eu`, which **is not a
+file**: it is the concatenation of **1,486 sources**, with the folder tree
+left in the comments.
 
-> *Corretto in sessione 12: erano dati per 869, che è il conto dei soli
-> `../lua/`. Sotto ci sono altri ventotto alberi — `Event/`, `MiniGame/`,
-> `UserInterface/` — cioè quasi tutti i file di dati del disco, nello stesso
-> flusso. Cercare il confine di un sorgente solo fra i `../lua/` fa
-> inghiottire a sette di loro le 185 che li seguono; nessuno dei sette è un
-> file di nemico, quindi le misure qui sotto non cambiano, ma il conto sì.*
+> *Corrected in session 12: they had been given as 869, which is the count of
+> `../lua/` alone. Below it there are twenty-eight more trees — `Event/`,
+> `MiniGame/`, `UserInterface/` — that is, almost all the disc's data files,
+> in the same stream. Looking for a source's boundary only among the
+> `../lua/` ones makes seven of them swallow the 185 that follow them; none of
+> the seven is an enemy file, so the measurements below do not change, but the
+> count does.*
 
 ```
 -- Start ../lua/Object/06Bee.lua.eu
 ```
 
-Sotto `../lua/Object/` ci sono 55 file di nemico, 266 di NPC, 21 di gimmick,
-100 di oggetto. Quarantasei chiamano `setBookRegistInfo`, cioè si registrano
-nel bestiario, ed è **esattamente il numero di voci dell'album**; 37 portano il
-comportamento per esteso, e i 9 che restano sono gli otto boss più Guardian,
-che in Lua hanno la sola inizializzazione.
+Under `../lua/Object/` there are 55 enemy files, 266 NPC files, 21 gimmick
+files and 100 object files. Forty-six call `setBookRegistInfo`, that is, they
+register themselves in the bestiary, and that is **exactly the number of
+entries in the album**; 37 carry their behaviour in full, and the 9 that
+remain are the eight bosses plus Guardian, which have only their
+initialisation in Lua.
 
-*Perché non lo si era visto: la ricerca era stata fatta in tre posti e non nel
-quarto, che è il file più grosso del disco — e fino alla sessione 9 quel file
-tornava indietro stroppiato, perché è uno dei 21 con i commenti in Shift-JIS.*
+*Why it had not been seen: the search had been made in three places and not
+in the fourth, which is the largest file on the disc — and until session 9
+that file came back mangled, because it is one of the 21 with comments in
+Shift-JIS.*
 
-## Com'è fatto un nemico
+## What an enemy looks like
 
-Due funzioni globali, una macchina a stati esplicita, la fase in un campo
-dell'attore e i tempi in slot numerati:
+Two global functions, an explicit state machine, the phase in a field of the
+actor and the timers in numbered slots:
 
 ```lua
 function BeeUpdate(Object)
@@ -52,270 +56,278 @@ function BeeUpdate(Object)
     end
 ```
 
-e `MoveArea` è un `local` del file, con il commento degli autori:
+and `MoveArea` is a `local` of the file, with the authors' comment:
 
 ```lua
 local MoveArea = 10.0;   -- 出現位置からの行動可能範囲
 ```
 
-*il raggio d'azione dal punto di comparsa*. **Il pattugliamento è quello**:
-vaga a caso, e quando esce dal raggio torna verso il punto in cui è nato. Non
-c'era niente da inventare.
+*the range of action from the spawn point*. **That is the patrol**: it wanders
+at random, and when it leaves the range it heads back towards the point where
+it was born. There was nothing to invent.
 
-## Cosa fa il modulo
+## What the module does
 
-`Troupe` carica la VM una volta sola — 3,7 MB e 869 sorgenti in un decimo di
-secondo — e dà a ogni nemico piazzato da `walk.populate_enemies` il proprio
-`Actor`, che è l'oggetto che il Lua riceve come `Object`. Ogni fotogramma
-chiama la sua `Update`.
+`Troupe` loads the VM once — 3.7 MB and 869 sources in a tenth of a second —
+and gives every enemy placed by `walk.populate_enemies` its own `Actor`, which
+is the object the Lua receives as `Object`. Every frame it calls its
+`Update`.
 
 ```
-53 metodi implementati su 161 chiesti,  che coprono 4.225/5.335 chiamate = 79,2%
+53 methods implemented of 161 requested,  covering 4,225/5,335 calls = 79.2%
 ```
 
-*(Il conto è cresciuto in sessione 12 con la correzione del confine dei
-sorgenti, e in sessione 13 con `AddAnimation` e `InitializeAnimation` — due
-metodi soli, sette punti, perché sono i più chiesti del corpus.)*
+*(The count grew in session 12 with the correction of the source boundary,
+and in session 13 with `AddAnimation` and `InitializeAnimation` — two methods
+only, seven points, because they are the most requested in the corpus.)*
 
-Sono quelli di fase, tempo, moto e percezione, scritti contro la griglia e le
-colonne che il progetto ha già: un nemico non ha una collisione propria nel
-dato, quindi si ferma ai muri passando dallo stesso codice del giocatore.
-Tutti gli altri **si contano invece di fallire**, che è il criterio di
-`host.py` e il modo di misurare quanto manca senza inventare.
+They are the ones for phase, time, movement and perception, written against
+the grid and the columns the project already has: an enemy has no collision
+of its own in the data, so it stops at walls by going through the same code
+as the player. All the others **are counted instead of failing**, which is
+`host.py`'s criterion and the way to measure how much is missing without
+inventing.
 
-### Tre decisioni che valeva la pena prendere bene
+### Three decisions worth getting right
 
-**In Lua `0` è vero.** Solo `nil` e `false` sono falsi, quindi rispondere zero
-a un predicato non implementato vorrebbe dire che ogni `if
-Object:IsQualcosa()` prende il ramo affermativo: un nemico che crede sempre di
-vedere il giocatore e di avere un muro davanti. Sarebbe un comportamento
-inventato da noi. A dare la risposta giusta è la convenzione di nome del
-**codice originale**, regolare su tutti e 55 i file: `Is…` è un predicato e
-risponde «no», `Get…` risponde zero, il resto è un comando e restituisce un
-oggetto a cui si possono chiedere altri metodi — perché gli script incatenano,
+**In Lua `0` is true.** Only `nil` and `false` are false, so answering zero to
+an unimplemented predicate would mean every `if Object:IsSomething()` takes
+the affirmative branch: an enemy that always believes it sees the player and
+has a wall in front of it. That would be behaviour invented by us. What gives
+the right answer is the naming convention of the **original code**, regular
+across all 55 files: `Is…` is a predicate and answers "no", `Get…` answers
+zero, and the rest is a command and returns an object that can be asked for
+further methods — because the scripts chain,
 `local club = Object:SetChildObject(…); club:setVisible(false)`.
 
-**`GetPosition` deve restituire un riferimento vivo.** Gli script assegnano
-dentro il valore che torna:
+**`GetPosition` must return a live reference.** The scripts assign into the
+value it returns:
 
 ```lua
 Object:GetPosition().y = Object:GetFloor()*1.6 + 4.0*1.6;
 ```
 
-e quel `1.6` è `entity.TILE`, il lato della casella — la scala del mondo
-confermata da un altro file ancora.
+and that `1.6` is `entity.TILE`, the side of a cell — the world's scale
+confirmed by yet another file.
 
-**Le chiusure vanno memoizzate.** Un solo nemico chiede `GetPhase` una decina
-di volte per fotogramma: crearne una nuova ogni volta significa consegnare al
-Lua decine di migliaia di oggetti Python temporanei al secondo che nessuno
-tiene vivi, e il sintomo — attori che cadono dopo un centinaio di fotogrammi,
-mai da soli, mai nello stesso punto — non somigliava affatto alla causa.
+**The closures must be memoised.** A single enemy asks for `GetPhase` a dozen
+times a frame: creating a new one each time means handing the Lua tens of
+thousands of temporary Python objects a second that nobody keeps alive, and
+the symptom — actors that fall over after a hundred frames or so, never alone,
+never at the same point — did not resemble the cause at all.
 
-## Le misure
+## The measurements
 
-Cinque mappe, cinque secondi di vita ciascuna, in [`walk.py`](../tools/walk.py):
+Five maps, five seconds of life each, in [`walk.py`](../tools/walk.py):
 
 ```
-312 attori su 312 nemici piazzati trovano il proprio comportamento
-  0 script caduti
-  0 nemici usciti dal calpestabile muovendosi
-261 su 312 si muovono da soli
+312 actors of 312 placed enemies find their own behaviour
+  0 scripts crashed
+  0 enemies that left walkable ground by moving
+261 of 312 move by themselves
 ```
 
-Il 12% che sta su una cella senza pavimento c'era **già alla partenza**: sono i
-546 che la sessione 10 ha misurato sbordare di una cella dentro il muro. Chi
-parte sul pavimento non lo lascia mai.
+The 12% standing on a cell with no floor were there **from the start**: they
+are the 546 that session 10 measured overhanging by one cell into the wall.
+Whoever starts on the floor never leaves it.
 
-E i 51 che non si muovono non sono un difetto: sono in attesa per ragioni
-proprie, e fra loro ci sono tutti i Togetoge, che la prima riga della loro
-`Update` congela finché il giocatore non entra nella stanza —
+And the 51 that do not move are not a defect: they are waiting for reasons of
+their own, and among them are all the Togetoge, which the first line of their
+`Update` freezes until the player enters the room —
 `if( not Object:IsPlayerArea() ) then return; end`.
 
-## La prova che chiude il cerchio
+## The proof that closes the circle
 
-La sessione 11 aveva letto la classe delle celle 5080 come **asse di
-movimento**, e lo aveva dedotto dal commento del file più la geometria del
-piazzamento. Eseguendo gli script, la stessa cosa si misura dall'altro capo:
+Session 11 had read the class of the 5080 cells as the **axis of movement**,
+and had inferred it from the file's comment plus the geometry of the
+placement. Running the scripts, the same thing is measured from the other end:
 
 ```
-Togetoge classe 1 (orizzontale)   spostamento  X 2,3   Z 0,0
-Togetoge classe 0 (verticale)     spostamento  X 0,0   Z 29,2
+Togetoge class 1 (horizontal)     displacement  X 2.3   Z 0.0
+Togetoge class 0 (vertical)       displacement  X 0.0   Z 29.2
 ```
 
-Una lettura statica del dato e una dinamica del codice che si confermano a
-vicenda, e nessuna delle due sa dell'altra.
+A static reading of the data and a dynamic reading of the code that confirm
+each other, and neither knows of the other.
 
-## E gli abitanti, che sono la stessa cosa
+## And the inhabitants, which are the same thing
 
-Nella stessa cartella ci sono **33 file di NPC**, `N01WiseMan1` … `N31Spelunker`,
-e l'aggancio è di nuovo il nodo che caricano — con una piega che vale la pena
-notare, perché mostra due mani sullo stesso disco: i modelli 02–08 scrivono
-`NP_NPC05_01`, l'01 e tutti quelli da 09 in su `NP_NPC_09_01`. Il numero però
-non sbaglia mai: **il numero nel nome del file e quello del nodo coincidono 33
-volte su 33**, che è la terza conferma indipendente della tabella
-archetipo→modello dedotta in sessione 4 dai nomi dei 237 script `npcevent_`.
+In the same folder there are **33 NPC files**, `N01WiseMan1` …
+`N31Spelunker`, and the hook is again the node they load — with a wrinkle
+worth noting, because it shows two hands on the same disc: models 02–08 write
+`NP_NPC05_01`, model 01 and all those from 09 up write `NP_NPC_09_01`. The
+number, though, is never wrong: **the number in the file name and that of the
+node coincide 33 times out of 33**, which is the third independent
+confirmation of the archetype→model table inferred in session 4 from the
+names of the 237 `npcevent_` scripts.
 
-> **Sessione 12.** La frase regge, e va letta stretta: coincide il numero del
-> *file* con quello della *costante* `NP_NPC_NN`. Da costante a **modello** c'è
-> un passo in più, e lo dichiara la tavola dei nodi — dove due voci sono
-> scambiate, `NP_NPC_19` ↔ `NP_NPC_26`. Vedi [`objects.md`](objects.md).
+> **Session 12.** The sentence holds, and it has to be read narrowly: what
+> coincides is the number of the *file* with that of the *constant*
+> `NP_NPC_NN`. From constant to **model** there is one more step, and the node
+> table declares it — where two entries are swapped, `NP_NPC_19` ↔
+> `NP_NPC_26`. See [`objects.md`](objects.md).
 
-`OldManUpdate` è il gironzolare dei villaggi, per intero:
+`OldManUpdate` is the villages' wandering, in full:
 
 ```lua
 Object:SetRandomDirection();
-Object:SetSpeed(1.6);      -- una casella al secondo
-Object:SetDistance(6.4);   -- quattro caselle, poi si ricomincia
+Object:SetSpeed(1.6);      -- one cell a second
+Object:SetDistance(6.4);   -- four cells, then start again
 ```
 
 ```
-la corte del castello: 33 abitanti, 32 con il proprio script, 22 gironzolano
-0 errori   0 usciti dal pavimento
+the castle courtyard: 33 inhabitants, 32 with their own script, 22 wander
+0 errors   0 left the floor
 ```
 
-**Dieci file non hanno affatto una `Update`**, e non è una lacuna: sono
-`N10King`, i sei saggi, `N28LegendHeroGhost`, `N29MedalKing`, `N30LegendHero`.
-Il disco dichiara l'immobilità con un'assenza, e la categoria è esattamente
-quella giusta — un re sul trono e un saggio in fondo a un tempio aspettano, non
-passeggiano. Fra i 55 file di nemico non ne manca nemmeno una.
+**Ten files have no `Update` at all**, and it is not a gap: they are
+`N10King`, the six wise men, `N28LegendHeroGhost`, `N29MedalKing`,
+`N30LegendHero`. The disc declares stillness by an absence, and the category
+is exactly the right one — a king on his throne and a wise man at the back of
+a temple wait, they do not stroll. Not one of the 55 enemy files lacks it.
 
-Fermi ma non immobili, però: `KingInitialize` carica le due pose del passo e
-le alterna ogni mezzo secondo con `AddAnimation(0,0.5)`, `AddAnimation(1,0.5)`.
-È il motivo per cui `AddAnimation` viene chiamata anche da chi non si muove.
+Still but not frozen, though: `KingInitialize` loads the two poses of the step
+and alternates them every half second with `AddAnimation(0,0.5)`,
+`AddAnimation(1,0.5)`. That is why `AddAnimation` is called even by those that
+do not move.
 
-**Una cosa che nessuno dichiara**, e va detto: la direzione iniziale. Non sta
-negli script — nessuno dei dieci fermi chiama `SetDirection` o `setAngle` — e
-non sta nella griglia, dove le celle che nominano un NPC non portano un solo
-flag. Il `facing = 1` con cui li mettiamo giù resta **una nostra scelta**.
+**One thing nobody declares**, and it has to be said: the initial direction.
+It is not in the scripts — none of the ten still ones calls `SetDirection` or
+`setAngle` — and it is not in the grid, where the cells that name an NPC carry
+not a single flag. The `facing = 1` we put them down with remains **a choice
+of ours**.
 
-Ma non è una scelta cieca, e la differenza vale: **il piazzamento la implica**.
-Chi non si muove sta sempre più in alto della porta da cui si entra —
-
-```
-personaggi immobili al chiuso: 11,  con la porta più vicina più in basso: 11
-d_20_1  il Re a y=11, la porta a y=36, sei cortigiani schierati in mezzo
-```
-
-— quindi gli si cammina incontro, e guardare verso il basso della griglia vuol
-dire guardare chi arriva. È la convenzione che chiunque abbia giocato a un
-gioco di questo genere si aspetta (si entra nella sala del trono da sud e il re
-guarda a sud), e qui non è ripresa dal genere: è misurata sul piazzamento, 11
-casi su 11. Resta un'inferenza — il dato dice dove stanno, non dove guardano —
-ma è un'inferenza con un oracolo, che è cosa diversa da un'abitudine.
-
-L'unica eccezione del disco è un saggio in campagna aperta (`field_8`), dove
-«la porta più vicina» non è l'ingresso di una sala e la domanda non si pone.
-
-## Cosa manca
-
-I 98 metodi non implementati sono il 27,3% delle chiamate, e sono quasi tutti
-fuori dal moto: animazione (`AddAnimation`, `InitializeAnimation`), colore
-(`AddColor` — vedi qui sotto: sono **i frammenti**, e senza distruzione non c'è
-niente da implementare), suono
-(`PlaySE`), effetti
-(`CreateEffect`, `createWarpEffect`),
-combattimento (`IsHitGuardPlayer`, `GetPlayerHP`, `Throw`) e la registrazione
-nel bestiario. Il combattimento in particolare è un sottosistema che il
-progetto non ha ancora, non un buco in questo.
-
-Il moto non è coperto in due punti soli, e sono dichiarati qui perché non si
-leggono: il flag di `Move(false)` — 17 chiamate, sempre `false`, significato
-non dichiarato da nessuna parte — e la curva di `Fly`, dove gli script passano
-una gravità che qui diventa un avvicinamento lineare alla quota di volo.
-
-## Il ciclo di pose è dichiarato — `AddAnimation`
-
-Era «il metodo più chiesto che manca»: **916 chiamate in 192 moduli**. Ora
-gira, e con `InitializeAnimation` porta la copertura dal 71,8% al **79,2%**
-delle chiamate — due metodi, sette punti, perché sono i più chiesti di tutti.
-
-`AddAnimation(i, wait)` aggiunge al ciclo **il nodo `i`**, mostrato per `wait`
-secondi. Che il primo argomento sia un indice nell'ordine di `AddNode` non è
-una scelta di lettura, è l'unica che il corpus permette:
+But it is not a blind choice, and the difference matters: **the placement
+implies it**. Those who do not move always stand higher up than the door one
+comes in by —
 
 ```
-file in cui l'indice massimo di AddAnimation e' < numero di AddNode   314/314
+still characters indoors: 11,  with the nearest door further down: 11
+d_20_1  the King at y=11, the door at y=36, six courtiers lined up between
 ```
 
-Zero eccezioni. E il secondo argomento è un'attesa, come dice il nome che gli
-script gli danno — `AnimationWait`, `DashAnimationWait`, `patapataSpeed`
-(パタパタ, lo sbattere delle ali). Vale `0.5` in 702 chiamate su 916.
+— so one walks towards them, and facing down the grid means facing whoever
+arrives. It is the convention anyone who has played a game of this kind
+expects (you enter the throne room from the south and the king faces south),
+and here it is not borrowed from the genre: it is measured on the placement,
+11 cases of 11. It remains an inference — the data says where they stand, not
+where they look — but it is an inference with an oracle, which is not the same
+thing as a habit.
 
-**Non sta nella `Initialize`**, e questo è il difetto in cui si cade: sta nella
-`Update`, al cambio di stato. `06Bee` rifà il proprio `1, 2` ogni volta che
-passa da fermo a volo, quindi il ciclo va riportato nell'entità dopo ogni
-fotogramma. E siccome solo 63 moduli su 192 chiamano `InitializeAnimation`, la
-lista si allungherebbe all'infinito: si tiene il **periodo**, che è
-indistinguibile a vedersi e non cresce.
+The only exception on the disc is a wise man in the open overworld
+(`field_8`), where "the nearest door" is not the entrance to a hall and the
+question does not arise.
 
-### Conferma quel che si deduceva, e corregge dieci nemici
+## What is missing
 
-Su 25 nemici che dichiarano un ciclo, **15 dicono esattamente `02_a`/`02_b`**,
-cioè la regola dedotta in sessione 4 dalla sola geometria dei nodi. Gli altri
-dieci no, e sono i casi che il progetto non poteva indovinare:
+The 98 unimplemented methods are 27.3% of the calls, and they are almost all
+outside movement: animation (`AddAnimation`, `InitializeAnimation`), colour
+(`AddColor` — see below: they are **the fragments**, and without destruction
+there is nothing to implement), sound (`PlaySE`), effects (`CreateEffect`,
+`createWarpEffect`), combat (`IsHitGuardPlayer`, `GetPlayerHP`, `Throw`) and
+registration in the bestiary. Combat in particular is a subsystem the project
+does not have yet, not a hole in this one.
 
-| modello | riposo | ciclo | passo |
+Movement is uncovered in only two places, and they are declared here because
+they cannot be read: the flag of `Move(false)` — 17 calls, always `false`,
+its meaning declared nowhere — and the curve of `Fly`, where the scripts pass
+a gravity that here becomes a linear approach to the flying height.
+
+## The pose cycle is declared — `AddAnimation`
+
+It was "the most requested method that is missing": **916 calls in 192
+modules**. It now runs, and together with `InitializeAnimation` it takes the
+coverage from 71.8% to **79.2%** of the calls — two methods, seven points,
+because they are the most requested of all.
+
+`AddAnimation(i, wait)` adds **node `i`** to the cycle, shown for `wait`
+seconds. That the first argument is an index in `AddNode` order is not a
+choice of reading, it is the only one the corpus allows:
+
+```
+files where the highest AddAnimation index is < the number of AddNode   314/314
+```
+
+Zero exceptions. And the second argument is a wait, as the name the scripts
+give it says — `AnimationWait`, `DashAnimationWait`, `patapataSpeed`
+(パタパタ, the flapping of wings). It is `0.5` in 702 calls of 916.
+
+**It is not in the `Initialize`**, and that is the trap to fall into: it is in
+the `Update`, at the change of state. `06Bee` redoes its own `1, 2` every time
+it goes from still to flying, so the cycle has to be carried back into the
+entity after every frame. And since only 63 modules of 192 call
+`InitializeAnimation`, the list would grow forever: what is kept is the
+**period**, which is indistinguishable to the eye and does not grow.
+
+### It confirms what was inferred, and corrects ten enemies
+
+Of 25 enemies that declare a cycle, **15 say exactly `02_a`/`02_b`**, that is,
+the rule inferred in session 4 from the geometry of the nodes alone. The other
+ten do not, and they are the cases the project could not have guessed:
+
+| model | rest | cycle | step |
 |---|---|---|---|
-| `c_enm_06` | `01` | `04_a`, `04_b` | 0,15 s |
-| `c_enm_12`, `13` | `06` | `02_a`, `01`, `02_b`, `01` | 0,22 s |
-| `c_enm_23`, `24` | `01` | `02`, `01` | 0,25 s |
-| `c_enm_16` | `02_a` | `02_b`, `06` | 0,25 s |
-| `c_enm_35` | `01` | `01`, `06` | 0,25 s |
+| `c_enm_06` | `01` | `04_a`, `04_b` | 0.15 s |
+| `c_enm_12`, `13` | `06` | `02_a`, `01`, `02_b`, `01` | 0.22 s |
+| `c_enm_23`, `24` | `01` | `02`, `01` | 0.25 s |
+| `c_enm_16` | `02_a` | `02_b`, `06` | 0.25 s |
+| `c_enm_35` | `01` | `01`, `06` | 0.25 s |
 
-I goblin camminano a **quattro tempi** — passo, fermo, passo opposto, fermo —
-che dai suffissi non si legge in nessun modo. E `c_enm_23`/`24` sono fra gli
-otto modelli che la sessione 8 aveva contato **senza nessuna coppia `_a`/`_b`**:
-restavano fermi perché il ciclo lo cercavamo nei nomi, e invece è scritto.
+The goblins walk in **four beats** — step, stand, opposite step, stand — which
+cannot be read from the suffixes in any way. And `c_enm_23`/`24` are among the
+eight models that session 8 had counted **with no `_a`/`_b` pair at all**:
+they stood still because we were looking for the cycle in the names, and
+instead it is written down.
 
-Anche il passo smette di essere un numero nostro: era `0.25` (o `0.3` per i
-dodici del minigioco), e adesso ogni nemico ha il proprio, da 0,12 a 0,25.
+The step also stops being a number of ours: it was `0.25` (or `0.3` for the
+twelve of the minigame), and now every enemy has its own, from 0.12 to 0.25.
 
-*I 12 che non dichiarano niente tengono il ripiego di prima, che è la regola
-dedotta: dove il disco tace non si cambia idea.*
+*The 12 that declare nothing keep the earlier fallback, which is the inferred
+rule: where the disc is silent, we do not change our mind.*
 
-## `AddColor` sono i frammenti, e lo scrivono gli autori
+## `AddColor` is the fragments, and the authors say so
 
-La domanda stava nel TODO da due sessioni, con l'ipotesi giusta e nessuna
-prova. La prova è un commento, in tre punti del corpus:
+The question had been in the TODO for two sessions, with the right hypothesis
+and no proof. The proof is a comment, in three places in the corpus:
 
 ```lua
 Object:SetAmount( 4 );                  -- 壊れた時の破片の量
 Object:AddColor( 0.38, 0.26, 0.00 );    -- 破片の色
 ```
 
-*La quantità di frammenti quando si rompe*, e *il colore dei frammenti*. Sono
-in Shift-JIS dentro un file UTF-8, come le 21 note che fino alla sessione 9
-rendevano illeggibile quasi tutto ciò che `all.lua.eu` conteneva — e infatti
-qui erano restate mute.
+*The number of fragments when it breaks*, and *the colour of the fragments*.
+They are in Shift-JIS inside a UTF-8 file, like the 21 notes that until
+session 9 made almost everything `all.lua.eu` contained unreadable — and
+indeed here they had stayed silent.
 
-**Il dato regge la lettura senza eccezioni**: `AddColor` è **sempre al più
-`SetAmount`**, 71 file su 71. Non si dichiarano più colori che frammenti. E
-`SetAmount` vale **4 in 52 file su 78**: una cosa che si rompe in quattro
-pezzi.
+**The data bears the reading out without exception**: `AddColor` is **always
+at most `SetAmount`**, 71 files of 71. No more colours are declared than
+fragments. And `SetAmount` is **4 in 52 files of 78**: a thing that breaks
+into four pieces.
 
-Da cui si spiega, invece di restare una stranezza, la misura della sessione 12
-— *«i 132 colori dichiarati sono già quelli dei vertici del proprio modello, a
-mezzo grado di tinta»*. Certo che lo sono: **i frammenti di una cosa hanno il
-colore della cosa.** Quella misura non diceva che `AddColor` è inutile, diceva
-che i suoi colori vengono da lì.
+This explains, instead of leaving it an oddity, session 12's measurement —
+*"the 132 declared colours are already those of their own model's vertices,
+to within half a degree of hue"*. Of course they are: **the fragments of a
+thing have the colour of the thing.** That measurement did not say `AddColor`
+is useless; it said its colours come from there.
 
-E cade anche l'argomento con cui la sessione 12 aveva escluso l'ipotesi «uno
-per nodo»: che `12GoblinRed` dichiari due volte lo stesso colore non esclude
-niente, perché in una tavolozza di quattro frammenti un colore ripetuto è
-semplicemente **un colore che pesa doppio**.
+And the argument by which session 12 had ruled out the "one per node"
+hypothesis falls too: `12GoblinRed` declaring the same colour twice rules out
+nothing, because in a palette of four fragments a repeated colour is simply
+**a colour that weighs double**.
 
-### I boss non si rompono, e i loro colori sono per parte
+### The bosses do not break, and their colours are per part
 
-Gli otto boss non chiamano `SetAmount`, ed è la ragione per cui il TODO li
-aveva isolati. `B01Snake` mostra cosa fanno invece:
+The eight bosses do not call `SetAmount`, and that is why the TODO had set them
+apart. `B01Snake` shows what they do instead:
 
 ```lua
-Boss:AddColor     (0.62, 0.63, 0.43);   -- 頭      la testa
-Boss:AddBodyColor (0.62, 0.63, 0.43);   -- 体      il corpo
-Boss:AddTailColor (0.62, 0.63, 0.43);   -- 尻尾    la coda
+Boss:AddColor     (0.62, 0.63, 0.43);   -- 頭      the head
+Boss:AddBodyColor (0.62, 0.63, 0.43);   -- 体      the body
+Boss:AddTailColor (0.62, 0.63, 0.43);   -- 尻尾    the tail
 ```
 
-Tre metodi paralleli per le tre parti di un serpente, tre colori ciascuno. E
-che anche lì si tratti di frammenti lo dice `B02BeeChild`, che usa lo stesso
-`Boss:AddColor` con il commento `-- 破片の色`: il boss si rompe **per parti**,
-e ogni parte ha la sua tavolozza.
+Three parallel methods for the three parts of a snake, three colours each. And
+that these too are fragments is said by `B02BeeChild`, which uses the same
+`Boss:AddColor` with the comment `-- 破片の色`: the boss breaks **by parts**,
+and each part has its own palette.

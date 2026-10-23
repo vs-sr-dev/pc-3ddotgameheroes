@@ -1,101 +1,101 @@
-# Formato TPKG — texture package
+# The TPKG format — texture packages
 
-**Stato: risolto.** Validato su tutti i 763 pacchetti del disco, 4.033 texture,
-622,9 MB di pixel, zero discrepanze. Parser di riferimento:
+**Status: solved.** Validated on all 763 packages on the disc: 4,033 textures,
+622.9 MB of pixels, zero discrepancies. Reference parser:
 [`tools/tpk.py`](../tools/tpk.py).
 
-Tutti i campi sono **big-endian**.
+Every field is **big-endian**.
 
-## Header — 0x20 byte
+## Header — 0x20 bytes
 
-| Off | Tipo | Campo |
+| Off | Type | Field |
 |---|---|---|
 | 0x00 | char[4] | `'TPKG'` |
-| 0x04 | char[4] | `'ps3\0'` — identificatore di piattaforma |
-| 0x08 | u16 | versione. `4` su tutto il disco |
-| 0x0A | u16 | numero di texture |
-| 0x0C | u32 | offset dell'area dati |
-| 0x10 | u32 | dimensione dell'area dati |
-| 0x14 | u32 | fine della tabella dei mip |
-| 0x18 | u32[2] | zero su tutti i pacchetti |
+| 0x04 | char[4] | `'ps3\0'` — platform identifier |
+| 0x08 | u16 | version. `4` across the whole disc |
+| 0x0A | u16 | number of textures |
+| 0x0C | u32 | offset of the data area |
+| 0x10 | u32 | size of the data area |
+| 0x14 | u32 | end of the mip table |
+| 0x18 | u32[2] | zero in every package |
 
-Invariante: `0x0C + 0x10 == dimensione del file`.
+Invariant: `0x0C + 0x10 == file size`.
 
-## Entry — 0x20 byte ciascuna, da 0x20
+## Entries — 0x20 bytes each, from 0x20
 
-| Off | Tipo | Campo |
+| Off | Type | Field |
 |---|---|---|
-| +0x00 | u32 | offset **assoluto** del nome (stringa NUL-terminated) |
-| +0x04 | u32 | dimensione totale del dato |
-| +0x08 | u32 | offset del dato, **relativo** all'area dati |
-| +0x0C | u32 | **formato pixel**: 9 = DXT1, 10 = DXT3, 11 = DXT5 |
-| +0x10 | u16 | larghezza |
-| +0x12 | u16 | altezza |
-| +0x14 | u8 | **numero di livelli mip** |
-| +0x15 | u8[3] | zero su tutte le entry |
-| +0x18 | u32 | ignoto, varia per entry — 666 valori distinti, forse un indice |
-| +0x1C | u32 | timestamp Unix di build, uguale per tutte le entry del pacchetto |
+| +0x00 | u32 | **absolute** offset of the name (a NUL-terminated string) |
+| +0x04 | u32 | total size of the data |
+| +0x08 | u32 | offset of the data, **relative** to the data area |
+| +0x0C | u32 | **pixel format**: 9 = DXT1, 10 = DXT3, 11 = DXT5 |
+| +0x10 | u16 | width |
+| +0x12 | u16 | height |
+| +0x14 | u8 | **number of mip levels** |
+| +0x15 | u8[3] | zero in every entry |
+| +0x18 | u32 | unknown, varies per entry — 666 distinct values, possibly an index |
+| +0x1C | u32 | Unix build timestamp, the same for every entry in a package |
 
-## Tabelle in coda
+## The tables at the end
 
-1. **Nomi** — stringhe NUL-terminated consecutive, puntate da +0x00.
-2. **Mip** — inizia alla fine dei nomi **allineata a 4 byte** e finisce
-   all'offset dichiarato in header 0x14. Contiene un `u32` con la dimensione
-   di ogni livello, per ogni texture, nell'ordine delle entry. Il numero di
-   livelli varia da texture a texture *anche all'interno dello stesso
-   pacchetto*: va letto da +0x14, non dedotto dalle dimensioni.
-3. Padding di zeri fino all'area dati.
+1. **Names** — consecutive NUL-terminated strings, pointed at by +0x00.
+2. **Mips** — starts at the end of the names, **aligned to 4 bytes**, and ends
+   at the offset declared in header field 0x14. It holds one `u32` with the
+   size of each level, for each texture, in entry order. The number of levels
+   varies from texture to texture *even within one package*: read it from
+   +0x14, do not infer it from the dimensions.
+3. Zero padding up to the data area.
 
-## Distribuzione osservata
+## What the disc holds
 
-| Formato | Texture | % |
+| Format | Textures | % |
 |---|---:|---:|
-| DXT3 | 3.870 | 96,0% |
-| DXT1 | 116 | 2,9% |
-| DXT5 | 47 | 1,2% |
+| DXT3 | 3,870 | 96.0% |
+| DXT1 | 116 | 2.9% |
+| DXT5 | 47 | 1.2% |
 
-Numero di mip: `1:737, 5:491, 6:17, 7:20, 8:1249, 9:1244, 10:209, 11:66`.
-Dimensioni più comuni: 256×256 (1.329), 128×128 (1.261), 16×16 (494),
-1280×720 (361, schermate a schermo intero), 512×512 (216).
+Mip counts: `1:737, 5:491, 6:17, 7:20, 8:1249, 9:1244, 10:209, 11:66`.
+The most common sizes: 256×256 (1,329), 128×128 (1,261), 16×16 (494),
+1280×720 (361, full-screen images), 512×512 (216).
 
-Timestamp di build: 441 distinti, da **2009-04-20** a **2010-02-01**.
+Build timestamps: 441 distinct, from **2009-04-20** to **2010-02-01**.
 
-## Due insidie
+## Two traps
 
-**Il formato pixel non è deducibile dalla dimensione.** DXT3 e DXT5 occupano
-entrambi 16 byte per blocco 4×4 — e 16 byte per blocco 4×4 equivale
-esattamente a 1 byte per pixel, quindi coincide anche con una texture a 8 bit
-non compressa. Le tre ipotesi sono numericamente indistinguibili: il codice va
-letto da +0x0C. La distinzione DXT3/DXT5 è stata risolta confrontando il canale
-alfa decodificato nei due modi (l'interpretazione sbagliata produce bande
-orizzontali regolari o bordi sfrangiati).
+**The pixel format cannot be inferred from the size.** DXT3 and DXT5 both take
+16 bytes per 4×4 block, and 16 bytes per 4×4 block is exactly 1 byte per pixel,
+so it also matches an uncompressed 8-bit texture. The three readings are
+numerically indistinguishable: the code has to be read from +0x0C. DXT3 was
+told apart from DXT5 by decoding the alpha channel both ways and comparing (the
+wrong reading gives regular horizontal bands or ragged edges).
 
-**DXT3 domina al 96%.** Insolito per un gioco del 2009, ma coerente con
-l'estetica: l'alfa esplicita a 4 bit di DXT3 mantiene netti i bordi dei
-sprite a voxel, dove l'alfa interpolata di DXT5 li sfrangerebbe.
+**DXT3 dominates, at 96%.** That is unusual for a 2009 game, but it fits the
+look: DXT3's explicit 4-bit alpha keeps the edges of voxel sprites sharp, where
+DXT5's interpolated alpha would fray them.
 
-## Cubemap
+## Cubemaps: one, and no flag says so
 
-Una sola texture su 4.033 è una cubemap: `shaders/graphics.ps3.tpk` →
-`ref_01.dds`, 256×256 DXT5, 9 mip per faccia. **Non esiste un flag esplicito**:
-le 6 facce sono consecutive, ciascuna con la propria catena di mip, mentre la
-tabella elenca i mip una volta sola. Il numero di facce si ricava dal rapporto
-`size / somma(mip)`, che vale 6 solo per questa entry e 1 per tutte le altre.
+One texture out of 4,033 is a cubemap: `shaders/graphics.ps3.tpk` →
+`ref_01.dds`, 256×256 DXT5, 9 mips per face. **There is no explicit flag**:
+the 6 faces are consecutive, each with its own mip chain, while the table lists
+the mips only once. The number of faces comes from the ratio
+`size / sum(mips)`, which is 6 for this entry alone and 1 for every other.
 
-## Conversione
+## Conversion is a header rewrite
 
-Il payload è DXT standard, quindi la conversione a `.dds` è una semplice
-riscrittura di header — nessuna trasformazione dei pixel, nessuno swizzle RSX.
+The payload is standard DXT, so converting to `.dds` is just a header
+rewrite — no pixel transformation, no RSX swizzle.
 
 ```
 python tools/tpk.py info   <file.tpk>
-python tools/tpk.py survey <dir>              censimento e validazione
-python tools/tpk.py export <file.tpk> <out>   scrive .dds e .png
-python tools/tpk.py sheet  <file.tpk> <png>   provino a contatto
+python tools/tpk.py survey <dir>              census and validation
+python tools/tpk.py export <file.tpk> <out>   writes .dds and .png
+python tools/tpk.py sheet  <file.tpk> <png>   contact sheet
 ```
 
-## Aggancio con le scene
+## Scenes find their textures by name
 
-Le texture sono referenziate **per nome `.dds`** dalla tabella stringhe dei
-blocchi `DSBF` dentro i `.pac` delle mappe (vedi RECON §5). Il nome è quindi
-la chiave di join fra scene e pacchetti texture: non servono indici numerici.
+Textures are referenced **by `.dds` name** from the string table of the
+`DSBF` blocks inside the maps' `.pac` files (see RECON §5). The name is
+therefore the join key between scenes and texture packages: no numeric index is
+needed.

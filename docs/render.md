@@ -1,227 +1,229 @@
-# Il primo render — `tools/view.py`
+# The first render — `tools/view.py`
 
-Il primo test di integrazione del progetto. Carica una mappa (o un modello),
-compone la scena e la disegna texturizzata in OpenGL 3.3.
-
-```
-python tools/view.py <file.pac|.dsb|.gz> [opzioni]
-python tools/view.py sweep <dir extract>      passata di verifica, senza schermo
-```
-
-Opzioni: `--sec N` una sola sezione, `--only <sottostringa>` filtra per nome,
-`--shot out.png` disegna un fotogramma e esce (non serve una finestra visibile),
-`--size`, `--azim/--elev/--dist`, `--flat` spegne la luce (resta il colore che
-il dato porta), `--list` elenca le sezioni. Alla tastiera: WASD/RV per
-muoversi, mouse per guardarsi intorno, F inquadra, T texture, L luce, C
-culling.
+The project's first integration test. It loads a map (or a model), assembles
+the scene and draws it textured in OpenGL 3.3.
 
 ```
-python tools/view.py light                    quanto cielo vede ogni mappa
+python tools/view.py <file.pac|.dsb|.gz> [options]
+python tools/view.py sweep <extract dir>      verification pass, no screen
 ```
 
-## Cosa mette alla prova
-
-Quattro formati e le catene di riferimenti che li legano, tutti insieme:
-
-    .pac  -> griglia di sezioni          format_pac.md
-    DSBF  -> nodi, mesh, chunk, vertici  format_dsb.md
-    chunk -> materiale -> texture        l'indice a +0x00 e i quattro stage
-    TPKG  -> pixel DXT                   format_tpk.md
-
-È un oracolo severo proprio perché è visivo: un errore non produce un disegno
-un po' storto, produce geometria strappata o texture giuste su facce sbagliate.
-Il primo sotterraneo (`d_1_1_1`, sezione 9) esce al primo tentativo con
-pavimento a piastrelle, muri, casse e acqua al posto giusto; `field_16` è
-riconoscibilmente la campagna del gioco, con l'erba a voxel, i sentieri di
-terra e la strada lastricata.
-
-## La passata di verifica
-
-Un render bello è un aneddoto. `sweep` è la misura: carica **tutto** ciò che si
-potrebbe disegnare e verifica ogni riferimento a texture.
+Options: `--sec N` a single section, `--only <substring>` filters by name,
+`--shot out.png` draws one frame and exits (no visible window needed),
+`--size`, `--azim/--elev/--dist`, `--flat` turns the light off (leaving the
+colour the data carries), `--list` lists the sections. At the keyboard:
+WASD/RV to move, the mouse to look around, F frames the scene, T textures,
+L light, C culling.
 
 ```
-627 file su 627, 5.297 sezioni, 23.439 chunk
-54.176.753 vertici, 30.909.108 triangoli, in 14s
-chunk senza UV: 312, senza texture: 312, mesh raggiunte via skin: 77
-riferimenti a texture: 1.905, non risolti: 2
+python tools/view.py light                    how much sky each map sees
 ```
 
-(Il tempo dipende dalla cache del disco: ~14 s a caldo, ~40 s a freddo.)
+## What it puts to the test
 
-I 54.176.753 vertici sono **tutta** la geometria che il disco dichiara: il
-censimento statico di `dsb.py verify` ne conta 54.176.741, e i 12 di
-differenza sono una mesh che due nodi istanziano due volte. Non si perde niente
-per strada.
+Four formats, and the chains of references that bind them, all at once:
 
-I due riferimenti non risolti sono residui di produzione, non buchi:
-`FireballColGrnColorFile` non è un nome di file, e `SouthPeak_Logo.ifl` è un
-*Image File List* di 3ds Max — il formato con cui Max elenca i fotogrammi di
-una texture animata. Rivelano con che strumenti sono stati fatti gli asset.
+    .pac  -> grid of sections                format_pac.md
+    DSBF  -> nodes, meshes, chunks, vertices format_dsb.md
+    chunk -> material -> texture             the index at +0x00 and the four stages
+    TPKG  -> DXT pixels                      format_tpk.md
 
-## Tre cose imparate guardando
+It is a strict oracle precisely because it is visual: a mistake does not
+produce a slightly crooked drawing, it produces torn geometry, or the right
+textures on the wrong faces. The first dungeon (`d_1_1_1`, section 9) comes
+out at the first attempt, with the tiled floor, the walls, the crates and the
+water in the right place; `field_16` is recognisably the game's overworld,
+with the voxel grass, the dirt paths and the paved road.
 
-**Il colore per vertice è illuminazione precotta.** Nel primo sotterraneo è un
-verde muschio (119, 143, 83) con gli spigoli interni portati a nero: ambient
-occlusion e tinta d'ambiente cotte nella geometria. Questo spiega perché le
-texture sono grigie e la scena no. È anche una **conferma indipendente
-dell'ordine dei canali**: se fosse ARGB l'alfa varierebbe e il blu sarebbe
-sempre 255, mentre si osserva l'opposto — l'ultimo byte è costante a 255. È
-RGBA.
+## The verification pass
 
-Ne segue una conseguenza per l'host: la luce dinamica non deve moltiplicare due
-volte quello che è già cotto.
+A good-looking render is an anecdote. `sweep` is the measurement: it loads
+**everything** that could be drawn and checks every texture reference.
 
-*Scritto qui in sessione 3 e applicato in sessione 13, che è il ritardo di cui
-vale la pena tenere conto: la conseguenza era giusta, e intanto il
-visualizzatore continuava a moltiplicare.* Quando la si è misurata invece che
-dedotta, il precotto si è diviso in due — in campagna è **occlusione per
-vertice** (42% di variazione entro una stessa faccia, 241 livelli), nei
-sotterranei sono **due livelli** e basta, cioè non è una luce. Da cui la
-regola che il renderer ora applica: illuminare chi non ce l'ha, e con la luce
-che il disco dichiara. Tutto in [`renderer.md`](renderer.md), il comando è
-`python tools/view.py light`.
+```
+627 of 627 files, 5,297 sections, 23,439 chunks
+54,176,753 vertices, 30,909,108 triangles, in 14s
+chunks without UV: 312, without texture: 312, meshes reached through skin: 77
+texture references: 1,905, unresolved: 2
+```
 
-**Le mappe hanno un coperchio.** Un sotterraneo visto dall'alto è una lastra
-piatta: la geometria include il soffitto. In gioco è il taglio della telecamera
-a nasconderlo, non l'assenza del dato.
+(The time depends on the disk cache: ~14 s warm, ~40 s cold.)
 
-**Il collo di bottiglia non è la lettura.** Decodificare i vertici con numpy
-direttamente dal vertex buffer — la stessa dichiarazione di `dsb.py`, tradotta
-in `dtype` invece che in formati `struct` — porta l'intero disco a 14 secondi.
-La versione che costruisce un dizionario per vertice è comoda per ispezionare,
-inservibile per caricare.
+The 54,176,753 vertices are **all** the geometry the disc declares: the static
+census of `dsb.py verify` counts 54,176,741, and the 12 of difference are a
+mesh that two nodes instance twice. Nothing is lost on the way.
 
-## Lo skinning, risolto per caso
+The two unresolved references are production leftovers, not holes:
+`FireballColGrnColorFile` is not a file name, and `SouthPeak_Logo.ifl` is a
+3ds Max *Image File List* — the format in which Max lists the frames of an
+animated texture. They show what tools the assets were made with.
 
-Contando i vertici disegnabili ne mancavano 50.043 su 54 milioni: lo 0,09%.
-Cercarne la ragione ha aperto il record `skin`, che era in coda alle cose da
-fare.
+## Three things learnt by looking
 
-Le 77 mesh irraggiungibili sono **tutte** in `Opening.ps3.dsb`, e sono
-esattamente quante sono le `skin` di quel file. Un nodo può agganciare uno
-`skin` invece di una mesh, e lo `skin` nomina la mesh a +0x20. Il resto del
-record — array di ossi, bind pose inversa, convenzione delle matrici — è
-documentato in [`format_dsb.md`](format_dsb.md) §skin.
+**Vertex colour is baked light.** In the first dungeon it is a moss green
+(119, 143, 83) with the inner edges taken to black: ambient occlusion and an
+ambient tint baked into the geometry. That explains why the textures are grey
+and the scene is not. It is also an **independent confirmation of the channel
+order**: if it were ARGB the alpha would vary and the blue would always be
+255, and the opposite is what is observed — the last byte is constant at 255.
+It is RGBA.
 
-Due cose sono cadute insieme:
+One consequence follows for the host: dynamic light must not multiply a
+second time what is already baked in.
 
-- la **semantica 9**, l'`ubyte4` misterioso che compariva solo in questo file,
-  è l'**indice di osso**: i suoi valori stanno in `0 .. n_ossi-1`. Era in coda
-  alle cose da fare per conto suo, e si è risolta da sola una volta aperto il
-  record `skin`;
-- lo skinning è **rigido**: c'è l'indice ma non il peso, un osso per vertice.
+*Written here in session 3 and applied in session 13, and that delay is worth
+keeping in mind: the consequence was right, and all the while the viewer went
+on multiplying.* Once it was measured rather than inferred, the baked light
+split in two. In the overworld it is **per-vertex occlusion** (42% variation
+within a single face, 241 levels); in the dungeons it is **two levels** and
+nothing more, which is to say it is not a light. Hence the rule the renderer
+now applies: light whatever does not carry light of its own, and light it
+with the light the disc declares. All of it is in [`renderer.md`](renderer.md);
+the command is `python tools/view.py light`.
 
-E c'è una trappola che vale la pena raccontare, perché è il genere di errore
-che passa inosservato. Disegnando le parti con la trasformazione del *nodo* si
-ottiene un villaggio 3D di aspetto plausibile, con qualche pezzo fuori posto:
-sembra un dettaglio da sistemare. Con le matrici degli ossi, invece, la scena
-si **appiattisce** — e la reazione istintiva è pensare di aver sbagliato. Il
-determinante diceva altro: la catena dei nodi passa per `oka_s-node` (scala Y
-0,04) e per un nodo che si chiama `Dummy_2D_pos-node`. La schermata di apertura
-è un **fondale 2D visto dall'alto**, e guardandolo lungo l'asse giusto ecco il
-villaggio con i suoi sentieri, la staccionata e gli alberi.
+**The maps have a lid.** A dungeon seen from above is a flat slab: the
+geometry includes the ceiling. In the game it is the camera cut that hides it,
+not missing data.
 
-Il risultato "quasi giusto" era il più ingannevole dei due.
+**The bottleneck is not the reading.** Decoding the vertices with numpy
+straight from the vertex buffer — the same declaration as `dsb.py`, turned
+into a `dtype` instead of `struct` formats — brings the whole disc down to 14
+seconds. The version that builds a dictionary per vertex is handy for
+inspecting and useless for loading.
 
-## Il post-processing — `tools/post.py`
+## Skinning, solved by accident
 
-La descrizione che Silicon Studio dà del proprio middleware in questo gioco
-(RECON §6.7) nomina quattro effetti, e sono quattro passate:
+Counting the drawable vertices, 50,043 of 54 million were missing: 0.09%.
+Looking for the reason opened the `skin` record, which had been in the queue.
+
+The 77 unreachable meshes are **all** in `Opening.ps3.dsb`, and there are
+exactly as many of them as that file has `skin`s. A node can hook a `skin`
+instead of a mesh, and the `skin` names the mesh at +0x20. The rest of the
+record — the bone array, the inverse bind pose, the matrix convention — is
+documented in [`format_dsb.md`](format_dsb.md) §skin.
+
+Two things fell together:
+
+- **semantic 9**, the mysterious `ubyte4` that appeared only in this file, is
+  the **bone index**: its values lie in `0 .. n_bones-1`. It had been in the
+  queue in its own right, and it solved itself once the `skin` record was
+  open;
+- the skinning is **rigid**: there is an index but no weight, one bone per
+  vertex.
+
+And there is a trap worth describing, because it is the kind of mistake that
+goes unnoticed. Drawing the parts with the *node* transform gives a
+plausible-looking 3D village with a few pieces out of place: it looks like a
+detail to tidy up. With the bone matrices, on the other hand, the scene
+**flattens** — and the instinctive reaction is to think you got it wrong. The
+determinant said otherwise: the node chain passes through `oka_s-node` (Y
+scale 0.04) and through a node called `Dummy_2D_pos-node`. The opening screen
+is a **2D backdrop seen from above**, and looked at along the right axis, there
+is the village, with its paths, the fence and the trees.
+
+The "almost right" result was the more misleading of the two.
+
+## The post-processing — `tools/post.py`
+
+The description Silicon Studio gives of its own middleware in this game
+(RECON §6.7) names four effects, and they become four passes:
 
 > *"Applied for **vignetting** and **color modification** to give a toy camera
 > feel, and realistic **defocusing** effects that create the feeling of a
 > miniature world. Also contributes to sparkling **glare** effects for light
 > sources or water."*
 
-    scena  -> FBO colore + profondità
-    prep   -> mezza risoluzione; in alfa il bright pass
-    blur   -> gaussiana separabile, due giri: stretto per il defocus,
-              largo per il glare
-    comp   -> defocus per cerchio di confusione, glare additivo,
+    scene  -> colour + depth FBO
+    prep   -> half resolution; the bright pass in alpha
+    blur   -> separable Gaussian, two rounds: narrow for the defocus,
+              wide for the glare
+    comp   -> defocus by circle of confusion, additive glare,
               vignetting, color modification
 
-I parametri non sono di fantasia: li pilota il Lua e si possono contare. Su
-**202 chiamate** presenti sul disco:
+The parameters are not invented: the Lua drives them, and they can be
+counted. Over the **202 calls** on the disc:
 
-| chiamata | intervallo osservato |
+| call | observed range |
 |---|---|
-| `SetParamDepthofField(a, b, c)` | `a` 0,37–3,02 (mediana 0,79); `b` 0,20–1,50 (mediana 0,70); `c` sempre 0 |
-| `SetDofApaerture(x, 0)` | 0,70 in 14 casi su 20, poi 1,2 / 1,3 / 1,5 |
-| `createFairyGlareEffect(38.27, 2.68, -23.2)` | **è una posizione nel mondo**, non parametri: il glare si piazza in un punto |
+| `SetParamDepthofField(a, b, c)` | `a` 0.37–3.02 (median 0.79); `b` 0.20–1.50 (median 0.70); `c` always 0 |
+| `SetDofApaerture(x, 0)` | 0.70 in 14 cases of 20, then 1.2 / 1.3 / 1.5 |
+| `createFairyGlareEffect(38.27, 2.68, -23.2)` | **a position in the world**, not parameters: the glare is placed at a point |
 
-`BackupDof()` e `RestoreDof()` compaiono 526 e 612 volte: ogni evento salva il
-DOF corrente, ne impone uno suo e alla fine lo rimette. Il fuoco è per-scena.
+`BackupDof()` and `RestoreDof()` appear 526 and 612 times: every event saves
+the current DOF, imposes its own, and puts the old one back at the end. Focus
+is per scene.
 
-Quello che non sappiamo è **l'unità di misura**: 0,79 non può essere una
-distanza di mondo, visto che una mappa è larga centinaia di unità. Sono valori
-normalizzati o moltiplicatori di una base che sta nell'EBOOT — una domanda per
-la Fase 3. Qui il fuoco insegue il bersaglio della telecamera (che è poi il
-`switchDofPointGaze()` del Lua) e l'ampiezza nitida è una frazione del raggio
-della scena, così il tilt-shift resta coerente da una mappa all'altra.
+What we do not know is **the unit**: 0.79 cannot be a world distance, since a
+map is hundreds of units wide. They are normalised values or multipliers of a
+base that lives in the EBOOT — a question for Phase 3. Here the focus follows
+the camera target (which is the Lua's `switchDofPointGaze()`), and the width
+of the sharp band is a fraction of the scene radius, so the tilt-shift stays
+consistent from one map to the next.
 
-Una taratura ottenuta guardando: con la soglia del bright pass a 0,72 brillava
-il pavimento di un sotterraneo, cioè tutto. Il fornitore però dice *"for light
-sources or water"* — il glare è raro, non è un velo. A 0,88 torna a essere
-quello che descrive.
+A setting found by looking: with the bright-pass threshold at 0.72, the floor
+of a dungeon glowed, which is to say everything did. But the vendor says
+*"for light sources or water"* — glare is rare, not a veil. At 0.88 it goes
+back to being what that describes.
 
-Il risultato è che `field_16` smette di sembrare un modello 3D e comincia a
-sembrare un plastico. Che è esattamente ciò che il *defocus* deve fare qui.
+The result is that `field_16` stops looking like a 3D model and starts
+looking like a scale model. That is exactly what the *defocus* is there for.
 
-## L'acqua, che il `.pac` non contiene
+## The water, which the `.pac` does not contain
 
-Un fotogramma dell'overworld aveva grandi zone nere, e sembravano geometria
-mancante. Erano il mare. La mappa non lo contiene — nessuna delle 11 texture di
-`Field_16` è acqua — perché lo disegna il motore, e la sua texture sta fuori da
-ogni pacchetto di mappa: **`data/shaders/water_col.dds`**, insieme a `Sun.dds`.
-Sono i due `.dds` sciolti del disco, e stare in `shaders/` è la dichiarazione
-che non appartengono a nessuna mappa e a nessun personaggio.
+A frame of the overworld had large black areas, and they looked like missing
+geometry. They were the sea. The map does not contain it — none of the 11
+textures of `Field_16` is water — because the engine draws it, and its
+texture lives outside every map package: **`data/shaders/water_col.dds`**,
+together with `Sun.dds`. These are the disc's two loose `.dds` files, and
+sitting in `shaders/` is the statement that they belong to no map and to no
+character.
 
-`water_col.dds` è 128×128, **non compressa** (32 bit, maschere `ARGB` in una
-parola little-endian, cioè `BGRA` byte per byte), e disegna un reticolo blu
-notte di **16 quadretti per lato**. Sedici quadretti sono i sedici dot di una
-casella, quindi la texture si posa **una copia per cella** e il reticolo si
-allinea da solo su tutto lo specchio, senza bisogno di ripetizione.
+`water_col.dds` is 128×128, **uncompressed** (32 bits, `ARGB` masks on a
+little-endian word, so `BGRA` byte by byte), and draws a midnight-blue grid of
+**16 squares a side**. Sixteen squares are the sixteen dots of a cell, so the
+texture is laid down **one copy per cell** and the grid lines itself up over
+the whole sheet of water, with no repeat needed.
 
-Le altre due cose che servono le dicono la griglia logica e la collisione, e
-stanno in [`walk.md`](walk.md):
+The other two things it needs come from the logic grid and the collision, and
+are in [`walk.md`](walk.md):
 
-- **dove**: le celle in cui l'unica superficie è il fondale steso sotto la
-  mappa (`Columns.water()`), 40.964 su tutto il disco — e la griglia le
-  conferma per un'altra strada, col tag di regione `119`;
-- **a che quota**: non è dichiarata da nessuna parte, ma il mondo la stringe da
-  tutte e due le parti. Il fondale sta **due caselle esatte** sotto la riva nel
-  52,9% dei casi e la riva sta a 0,00 nel 50%, quindi in mezzo c'è un solo
-  multiplo di una casella. Ogni specchio prende la sua: si parte dalle rive e
-  si propaga il **minimo** dentro l'acqua, così il lago di montagna di
-  `Field_16` resta a +11,2 mentre il mare sta a −2,0.
-
-```
-python tools/view.py <mappa>.pac.gz            l'acqua si disegna da sola
-python tools/view.py <mappa>.pac.gz --no-water com'era prima
-```
-
-E la misura di cosa resta, che `view.py layout` ora stampa:
+- **where**: the cells whose only surface is the backdrop laid under the map
+  (`Columns.water()`), 40,964 across the whole disc — and the grid confirms
+  them by another route, with region tag `119`;
+- **at what height**: it is declared nowhere, but the world pins it from both
+  sides. The backdrop lies **exactly two cells** below the shore in 52.9% of
+  cases, and the shore is at 0.00 in 50%, so there is a single multiple of a
+  cell in between. Each sheet of water takes its own: start from the shores
+  and propagate the **minimum** into the water, so that the mountain lake of
+  `Field_16` stays at +11.2 while the sea is at −2.0.
 
 ```
-celle di mappa coperte dalla geometria: 436.043/480.731 = 90,7%
-  di cui acqua, ora disegnata:           40.964 celle
-  restano nere in un fotogramma:          8.503 celle = 1,8% della mappa
+python tools/view.py <map>.pac.gz            the water draws itself
+python tools/view.py <map>.pac.gz --no-water as it was before
 ```
 
-Il nero residuo è l'altra metà della vecchia voce «acqua e vuoto»: celle dentro
-la mappa senza geometria **e** senza fondale, cioè vuoto vero. Sono l'1,8%, e
-non sono più una zona ma dei buchi.
+And the measurement of what is left, which `view.py layout` now prints:
 
-## Cosa non fa
+```
+map cells covered by the geometry:     436,043/480,731 = 90.7%
+  of which water, now drawn:                40,964 cells
+  still black in a frame:                    8,503 cells = 1.8% of the map
+```
 
-È un renderer di verifica, non il renderer del gioco. Manca il resto di
-[`renderer.md`](renderer.md): normal map, environment map, rim light, ombre.
-L'illuminazione non è più un aiuto a leggere le forme (sessione 13), ma restano
-fuori le **luci puntiformi**: il disco ha `setPointLight` e `pointLightOff`, e
-i sotterranei — le mappe che la propria luce non ce l'hanno — sono pieni di
-torce, 859 celle.
+The remaining black is the other half of the old "water and void" item: cells
+inside the map with no geometry **and** no backdrop, that is, real void. They
+are 1.8%, and they are no longer an area but holes.
 
-Nota di passaggio raccolta cercando l'acqua: `data/shaders/graphics.ps3.tpk`
-contiene `ice_03`, `snow_01`, `sun_01` e **`ref_01`, che è un CUBEMAP** — cioè
-proprio l'environment map che questo elenco dà per mancante.
+## What it does not do
+
+It is a verification renderer, not the game's renderer. The rest of
+[`renderer.md`](renderer.md) is missing: normal maps, environment maps, rim
+light, shadows. The lighting is no longer just an aid to reading the shapes
+(session 13), but the **point lights** are still left out: the disc has
+`setPointLight` and `pointLightOff`, and the dungeons — the maps that do not
+carry light of their own — are full of torches, 859 cells.
+
+A note in passing, picked up while looking for the water:
+`data/shaders/graphics.ps3.tpk` contains `ice_03`, `snow_01`, `sun_01` and
+**`ref_01`, which is a CUBEMAP** — that is, exactly the environment map this
+list gives as missing.

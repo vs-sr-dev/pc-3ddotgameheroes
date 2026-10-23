@@ -1,78 +1,79 @@
-# `MAP_ALIGNMENT/*.DAT` — la griglia logica delle mappe
+# `MAP_ALIGNMENT/*.DAT` — the maps' logical grid
 
-**Stato: layout risolto, semantica dei passaggi risolta.** Restano da nominare
-cinque campi del record e i valori dei tag.
+**Status: layout solved, passage semantics solved.** Five fields of the record
+and the tag values are still to be named.
 Parser: [`tools/mapdat.py`](../tools/mapdat.py).
 
-170 file in `PS3_GAME/USRDIR/DATA/MAP/MAP_ALIGNMENT/`, 34 MB. Sono gli **unici
-file little-endian del disco**: tutto il resto di 3D Dot Game Heroes è
-big-endian, come vuole il PPC della PS3. Se qui un campo non ha senso, la prima
-cosa da provare è l'altro endianness.
+170 files in `PS3_GAME/USRDIR/DATA/MAP/MAP_ALIGNMENT/`, 34 MB. They are the
+**only little-endian files on the disc**: everything else in 3D Dot Game
+Heroes is big-endian, as the PS3's PPC wants. If a field makes no sense here,
+the first thing to try is the other endianness.
 
-Descrivono la griglia *logica* di una mappa — dove stanno eventi, nemici e
-passaggi. `D_1_1_1` ha una griglia logica 112 × 96 e una griglia di schermi
-7 × 8 nel `.pac`.
+They describe a map's *logical* grid — where events, enemies and passages
+are. `D_1_1_1` has a 112 × 96 logical grid and a 7 × 8 grid of screens in the
+`.pac`.
 
-Le due griglie non sono indipendenti: **il rapporto è sempre un intero**, ed è
-la taglia di uno schermo in celle (16 × 12 nei sotterranei, 16 × 16
-nell'overworld). Una cella vale **1,6 unità di mondo**, la stessa altezza di un
-personaggio. Da qui si compone la mappa — vedi
-[`format_pac.md`](format_pac.md) — e da qui si legge il sistema di riferimento
-in cui parlano gli script: origine a un angolo, X positiva verso destra,
-Z negativa verso il basso, `SetPlayerPosition(cx, cy, piano)`.
+The two grids are not independent: **the ratio is always an integer**, and it
+is the size of one screen in cells (16 × 12 in dungeons, 16 × 16 in the
+overworld). A cell is **1.6 world units**, the same as a character's height.
+The map is composed from this — see [`format_pac.md`](format_pac.md) — and
+from this comes the coordinate system the scripts speak in: origin at a
+corner, positive X to the right, negative Z downwards,
+`SetPlayerPosition(cx, cy, floor)`.
 
-Questo file è anche l'**oracolo esterno** con cui la composizione si verifica:
-il suo campo a +0x00 vale `0xFFFFFFFF` fuori mappa, quindi dice cella per cella
-dove la geometria deve esserci. `python tools/view.py layout` fa il confronto
-su tutte le mappe del disco.
+This file is also the **external oracle** the composition is checked against:
+its field at +0x00 is `0xFFFFFFFF` outside the map, so it says cell by cell
+where the geometry has to be. `python tools/view.py layout` runs the
+comparison over every map on the disc.
 
-## Formato
+## Format
 
 ```
-testata
-  +0x00 u32       8, 16 o 32 — costante per gruppo di mappe (16 in 140 file)
-  +0x04 u32       w, celle in orizzontale
-  +0x08 u32       h, celle in verticale
+header
+  +0x00 u32       8, 16 or 32 — constant per group of maps (16 in 140 files)
+  +0x04 u32       w, cells across
+  +0x08 u32       h, cells down
   +0x0C u32       ?
   +0x10 u32       len
-  +0x14 char[len] stringa di livello mappa
+  +0x14 char[len] map level string
 
-poi esattamente w*h record, uno per cella, in ordine di riga
-  +0x00 u32       identificativo di regione, 0xFFFFFFFF fuori mappa
-  +0x04 u32       ?   (0 nel 91%)
-  +0x08 u32       ?   (0xFFFFFFFF nel 56%)
+then exactly w*h records, one per cell, in row order
+  +0x00 u32       region identifier, 0xFFFFFFFF outside the map
+  +0x04 u32       ?   (0 in 91%)
+  +0x08 u32       ?   (0xFFFFFFFF in 56%)
   +0x0C u32       ?
-  +0x10 u32       ?   (0 nel 97%)
+  +0x10 u32       ?   (0 in 97%)
   +0x14 u32       ?
   +0x18 u32       len1
   +0x1C u32       len2
-  poi len1+len2 byte di testo, senza terminatore né allineamento
+  then len1+len2 bytes of text, with no terminator and no alignment
 ```
 
-### Perché è certo
+### Why it is certain
 
-Un formato a record variabili offre un oracolo durissimo, e conviene usarlo:
-percorrendolo record per record — lunghezze delle stringhe incluse — si deve
-finire **esattamente** sull'ultimo byte del file dopo `w*h` record. Succede in
-**170 file su 170**.
+A format of variable-length records offers a very hard oracle, and it pays to
+use it: walking it record by record — string lengths included — has to end
+**exactly** on the last byte of the file after `w*h` records. It does in
+**170 files out of 170**.
 
-Con una taglia di record sbagliata si esce dal file quasi subito. Prima ancora,
-la taglia si era ristretta a 32 byte confrontando `len(file) − w·h·taglia`:
+With a wrong record size the walk leaves the file almost at once. Before that,
+the size had already been narrowed to 32 bytes by comparing
+`len(file) − w·h·size`:
 
-| Taglia | Resto medio |
+| Size | Mean remainder |
 |---:|---:|
-| 16 | 50,3% |
-| 24 | 25,4% |
-| 28 | 13,0% |
-| **32** | **0,5%** (max 1,9%) |
+| 16 | 50.3% |
+| 24 | 25.4% |
+| 28 | 13.0% |
+| **32** | **0.5%** (max 1.9%) |
 
-36 dà resto negativo ovunque. Solo 32 lascia un avanzo dell'ordine dell'1%, che
-sono appunto le stringhe.
+36 gives a negative remainder everywhere. Only 32 leaves something of the
+order of 1% over, which is exactly the strings.
 
-## Le stringhe
+## The strings
 
-La prima è i **parametri**, nella stessa sintassi a flag dell'API Lua; la
-seconda è di solito la **classe** dell'oggetto.
+The first is the **parameters**, in the same flag syntax as the Lua API; the
+second is usually the object's **class**.
 
 ```
 params = "D_1_2;-gfrom_d_1;-right"     cls = "Warp"
@@ -80,127 +81,130 @@ params = "-g11;-o02;-f0;-e1;-ex0;"     cls = ""
 params = "-g112;-o112;"                cls = "destructionWall"
 ```
 
-> **Ma "di solito" non basta.** Nel 14% dei casi (294 su 2.170) la seconda
-> stringa contiene a sua volta un `;` ed è una *seconda specifica*, non un nome
-> di classe:
+> **But "usually" is not enough.** In 14% of cases (294 of 2,170) the second
+> string itself contains a `;` and is a *second specification*, not a class
+> name:
 >
 > ```
 > params = "-g110;-o102;"              cls = "D_7_1_2;-g212;-o102;"
 > ```
 >
-> Leggere solo la prima stringa, o filtrare sulla classe `Warp`, perde metà
-> del grafo: 192 archi invece di 320. Il sintomo che ha fatto scoprire la cosa
-> è che la reciprocità era solo del 64% — troppo bassa per un mondo navigabile.
+> Reading only the first string, or filtering on the `Warp` class, loses half
+> the graph: 192 edges instead of 320. The symptom that gave it away was that
+> reciprocity was only 64% — too low for a world you can walk through.
 
-Su tutto il disco: 1.111.469 celle, il 56% vuote, **14.099 con un oggetto** e
-615 classi distinte. Le più frequenti sono `Exit` (397), `Warp` (240),
-`observer` / `Observer` (303 insieme), `SwitchObserver` (80), `EnemyObserver`
-(65), `destructionWall` (46), `PitFall` (21). In 11.929 celle la classe è vuota
-e ci sono solo parametri.
+Across the disc: 1,111,469 cells, 56% of them empty, **14,099 with an
+object** and 615 distinct classes. The most frequent are `Exit` (397), `Warp`
+(240), `observer` / `Observer` (303 together), `SwitchObserver` (80),
+`EnemyObserver` (65), `destructionWall` (46), `PitFall` (21). In 11,929 cells
+the class is empty and there are only parameters.
 
-I flag più usati: `-s` (10.196), `-g` (3.357), `-o` (2.795), `-i` (1.161),
-`-f`, `-e`, `-ex`, `-p`, più parole di direzione (`right`, `up`, `down`).
+The most used flags: `-s` (10,196), `-g` (3,357), `-o` (2,795), `-i`
+(1,161), `-f`, `-e`, `-ex`, `-p`, plus direction words (`right`, `up`,
+`down`).
 
-## I passaggi — come si naviga il mondo
+## Passages — how the world is navigated
 
-È la parte che serve davvero, ed è risolta.
+This is the part that is actually needed, and it is solved.
 
-> Un `Warp` porta `<mappa destinazione>;-g<nome del punto di arrivo>;-<direzione>`.
-> Nella mappa di destinazione c'è un oggetto — di solito un `Exit` — che
-> **dichiara quel nome** con lo stesso flag `-g`.
+> A `Warp` carries `<destination map>;-g<name of the arrival point>;-<direction>`.
+> In the destination map there is an object — usually an `Exit` — that
+> **declares that name** with the same `-g` flag.
 
-Il nome del gate è quindi la chiave di aggancio fra le due mappe, non una
-coordinata. Esempio completo:
+The gate name is therefore the key that joins the two maps, not a coordinate.
+A complete example:
 
 ```
-D_7_1_1  cella (87,60)  Warp  "D_7_2_1;-gd_7_1o;-right"
-D_7_2_1                 Exit  "-gd_7_1o"
+D_7_1_1  cell (87,60)  Warp  "D_7_2_1;-gd_7_1o;-right"
+D_7_2_1                Exit  "-gd_7_1o"
 ```
 
-Tre verifiche indipendenti, tutte sull'intero corpus:
+Three independent checks, all over the whole corpus:
 
 | | |
 |---|---|
-| punto di arrivo presente nella destinazione | **508 su 511** |
-| destinazioni che corrispondono a un `.pac` | **140 su 143** |
-| archi che hanno anche il ritorno | **305 su 320 (95%)** |
+| arrival point present in the destination | **508 of 511** |
+| destinations that match a `.pac` | **140 of 143** |
+| edges that also have the way back | **305 of 320 (95%)** |
 
-La reciprocità al 95% è la prova più forte: un mondo si attraversa nei due
-sensi, e un'estrazione sbagliata non produce quel numero per caso — la prima
-versione, che leggeva solo la prima stringa, si fermava al 64%.
+Reciprocity at 95% is the strongest proof: a world is crossed in both
+directions, and a wrong extraction does not produce that number by chance —
+the first version, which read only the first string, stopped at 64%.
 
-Le poche eccezioni si spiegano da sole e sono difetti dei dati pubblicati, non
-del parser: `D_7_3` punta a `D_7_2` quando le mappe vere sono `D_7_2_1`…`D_7_2_9`;
-un file scrive `d7_1_4` senza il trattino basso; c'è una destinazione chiamata
-`test`; e `D_0_2` — una mappa che contiene un solo oggetto, quel warp — cerca
-in `Field_11` un gate che lì non esiste, in compagnia dei vari `-gDebug` e
-`CAPTURE0000` sparsi nel corpus.
+The few exceptions explain themselves and are defects of the published data,
+not of the parser: `D_7_3` points at `D_7_2` when the real maps are
+`D_7_2_1`…`D_7_2_9`; one file writes `d7_1_4` without the underscore; there is
+a destination called `test`; and `D_0_2` — a map that contains a single
+object, that warp — looks in `Field_11` for a gate that does not exist there,
+in the company of the various `-gDebug` and `CAPTURE0000` scattered through
+the corpus.
 
-Il grafo finale ha **146 mappe e 320 archi**, e si legge bene:
-`d_1_1_1 → d_1_2 → d_1_3` è la catena di stanze del primo sotterraneo,
-`d_1_1_1 ↔ field_16` è l'uscita verso l'esterno, e `field_16` da sola si
-affaccia su otto mappe fra sotterranei e aree confinanti.
+The final graph has **146 maps and 320 edges**, and it reads well:
+`d_1_1_1 → d_1_2 → d_1_3` is the chain of rooms of the first dungeon,
+`d_1_1_1 ↔ field_16` is the way out to the outside, and `field_16` alone opens
+onto eight maps, dungeons and neighbouring areas.
 
-## Gli NPC di mappa
+## Map NPCs
 
-271 celle su tutto il disco hanno come classe **il solo identificativo di un
-NPC** — `a1_010`, `b8_010`, `a11_120`: lettera, uno o due numeri di area,
-trattino basso, tre cifre — senza parametri e senza altro. 236 identificativi
-distinti.
+271 cells across the disc have as their class **an NPC's identifier and
+nothing else** — `a1_010`, `b8_010`, `a11_120`: a letter, one or two area
+digits, an underscore, three digits — with no parameters and nothing more. 236
+distinct identifiers.
 
-Sono le posizioni dei personaggi che stanno sulla mappa prima che un evento
-cominci. Gli script li nominano come *archetipo + identificativo*
-(`OldWomana6_010`), quindi la coda del nome è la chiave di aggancio, come il
-nome del gate lo è per i passaggi. Vedi [`entities.md`](entities.md).
+These are the positions of the characters that stand on the map before an
+event begins. The scripts name them as *archetype + identifier*
+(`OldWomana6_010`), so the tail of the name is the join key, as the gate name
+is for passages. See [`entities.md`](entities.md).
 
 ```python
 mapdat.npc_spots(dat_bytes)   # -> {'a1_010': (7, 11), ...}
 ```
 
-## Cosa manca
+## What is missing
 
-- I cinque campi del record fra +0x04 e +0x14.
-- Il significato preciso del campo a +0x00, che ha 215 valori distinti sul
-  disco. **Non** è un identificativo di oggetto, ed è un errore facile da fare:
-  in `D_1_2` il valore `0x7D1` copre 360 celle su 520 mentre gli oggetti sono
-  10. È piuttosto un identificativo di **regione** — `0xFFFFFFFF` nel 56% delle
-  celle del disco, cioè fuori mappa, e poi valori bassi (`0x1`, `0x15`, `0x25`)
-  o della fascia `0x7D1`…`0x7DD` a seconda della mappa. Non è nemmeno la classe
-  dell'oggetto: `Exit` compare con `0x1`, `0x15` e `0x25`.
+- The five record fields between +0x04 and +0x14.
+- The exact meaning of the field at +0x00, which has 215 distinct values on
+  the disc. It is **not** an object identifier, and that is an easy mistake to
+  make: in `D_1_2` the value `0x7D1` covers 360 cells out of 520 while there
+  are 10 objects. It is rather a **region** identifier — `0xFFFFFFFF` in 56% of
+  the disc's cells, that is outside the map, and otherwise low values (`0x1`,
+  `0x15`, `0x25`) or values in the `0x7D1`…`0x7DD` band, depending on the map.
+  Nor is it the object's class: `Exit` appears with `0x1`, `0x15` and `0x25`.
 
-  **Un valore però ha un nome** (sessione 6): il `119` è l'**acqua**.
+  **One value does have a name** (session 6): `119` is **water**.
 
-  A dirlo è un oracolo esterno, come sempre in questo progetto. Il file di
-  collisione dice quali celle hanno per unica superficie il fondale steso sotto
-  la mappa — il mare, il fossato, la gola fra due altipiani — e sono 40.964 su
-  tutto il disco (vedi [`walk.md`](walk.md)). Confrontate con il tag:
+  As always in this project, an external oracle says so. The collision file
+  says which cells have the backdrop stretched under the map as their only
+  surface — the sea, the moat, the gorge between two plateaus — and there are
+  40,964 of them across the disc (see [`walk.md`](walk.md)). Compared with the
+  tag:
 
   ```
-  88,4% delle celle d'acqua porta il tag 119
-  85,1% delle celle col tag 119 è acqua      (il tag è largo una cella in più)
+  88.4% of water cells carry tag 119
+  85.1% of cells with tag 119 are water      (the tag is one cell wider)
   ```
 
-  Mappa per mappa, dove il `119` compare ne porta il **98–100%**. Ed è un valore
-  **unico su tutto il disco**, non uno per gruppo di mappe come si era scritto
-  in sessione 5: quell'ipotesi nasceva dal confondere due cose diverse.
+  Map by map, where `119` appears it carries **98–100%** of them. And it is
+  **a single value across the disc**, not one per group of maps as written in
+  session 5: that hypothesis came from confusing two different things.
 
-  Perché sono due cose diverse: l'**acqua** (il fondale è l'unica superficie) e
-  il **vuoto** (nessuna collisione affatto, 55.477 celle) non coincidono, e il
-  tag dichiara solo la prima — fra le celle di vuoto il `119` è appena il 10%.
-  Il vuoto è piuttosto lo scarto fra la regione rettangolare dichiarata e la
-  mappa vera, e per quello un tag non serve.
-- Il campo +0x0C della testata.
-- L'aggancio con l'enum `map_manager` estratto dal Lua, che ha 216 membri del
-  tipo `MS_FIELD_50`, `MS_DUNGEON_5_1_1`, `MT_FIELD`: sono gli stessi nomi di
-  mappa, ma i valori numerici sono nativi e arrivano con la Fase 3.
+  They are different because **water** (the backdrop is the only surface) and
+  **void** (no collision at all, 55,477 cells) do not coincide, and the tag
+  declares only the first — among void cells `119` is barely 10%. The void is
+  rather the gap between the declared rectangular region and the real map, and
+  that needs no tag.
+- The header field at +0x0C.
+- The join with the `map_manager` enum extracted from the Lua, which has 216
+  members such as `MS_FIELD_50`, `MS_DUNGEON_5_1_1`, `MT_FIELD`: they are the
+  same map names, but the numeric values are native and arrive with Phase 3.
 
-## Uso
+## Use
 
 ```
 python tools/mapdat.py info  <file.DAT>
-python tools/mapdat.py cells <file.DAT>                 istogramma dei tag
-python tools/mapdat.py graph <dir> --pac <dir con .pac> grafo dei passaggi
+python tools/mapdat.py cells <file.DAT>                 histogram of the tags
+python tools/mapdat.py graph <dir> --pac <dir of .pac>  graph of the passages
 ```
 
-`--pac` attiva le verifiche: quante destinazioni esistono davvero e quanti
-archi hanno il ritorno.
+`--pac` turns the checks on: how many destinations really exist and how many
+edges have the way back.

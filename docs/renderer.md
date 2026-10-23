@@ -1,19 +1,20 @@
-# Il renderer, ricavato dagli shader
+# The renderer, read off the shaders
 
-Ottenuto estraendo le stringhe dai pacchetti shader in `data/shaders/`:
-**1.200 programmi Cg** (magic `CGB`) e **107 identificatori distinti**, con
-convenzione `at*` per gli attributi di vertice e `g*` per gli uniform.
+Obtained by extracting the strings from the shader packages in
+`data/shaders/`: **1,200 Cg programs** (magic `CGB`) and **107 distinct
+identifiers**, with an `at*` convention for vertex attributes and `g*` for
+uniforms.
 
-Nessun reverse engineering del bytecode: sono le tabelle dei simboli dei
-programmi compilati.
+No reverse engineering of the bytecode: these are the symbol tables of the
+compiled programs.
 
-## Modello
+## Model
 
-Renderer **forward**, fino a **4 luci** simultanee, con matrici e vettori
-disponibili in tre spazi (model, view, world) — tipico di un motore che sceglie
-lo spazio di illuminazione in base al materiale.
+A **forward** renderer, with up to **4 lights** at once, and matrices and
+vectors available in three spaces (model, view, world) — typical of an engine
+that picks the lighting space according to the material.
 
-## Attributi di vertice (13)
+## Vertex attributes (13)
 
 ```
 atPosition0  atNormal0  atColor / atColur0  atTexCoord0
@@ -22,202 +23,205 @@ atBlendIndex atBlendWeight
 atWorld0 atWorld1 atWorld2 atWorld3
 ```
 
-Tre conferme incrociate importanti:
+Three important cross-checks:
 
 - `atPosition0 · atNormal0 · atColor · atTexCoord0 · atTangent0 · atBinormal0`
-  sono **esattamente i sei attributi** del vertice a stride 76 decodificato in
-  [`format_dsb.md`](format_dsb.md). Conferma indipendente di quel lavoro.
-- `atBlendIndex` + `atBlendWeight`, insieme a `gWorldViewMtxPalette`,
-  confermano lo **skinning con palette di matrici**. Da qui era nata la
-  predizione che il vertice a stride 88 fosse i 76 byte più indici e pesi degli
-  ossi: **smentita**. La dichiarazione del vertice, che nel frattempo si è
-  trovata nel formato DSBF, dice che gli 8 attributi sono i sei soliti più un
-  secondo set di UV e un `ubyte4` ignoto — e che *nessun* vertice sul disco
-  porta pesi. Lo skinning vive quindi tutto nei 77 record `skin`.
-- `atWorld0..3` è una **matrice di mondo per istanza nello stream di vertici**:
+  are **exactly the six attributes** of the stride-76 vertex decoded in
+  [`format_dsb.md`](format_dsb.md). An independent confirmation of that work.
+- `atBlendIndex` + `atBlendWeight`, together with `gWorldViewMtxPalette`,
+  confirm **matrix-palette skinning**. That gave rise to the prediction that
+  the stride-88 vertex was the 76 bytes plus bone indices and weights:
+  **refuted**. The vertex declaration, found in the DSBF format in the
+  meantime, says that the 8 attributes are the usual six plus a second UV set
+  and an unknown `ubyte4` — and that *no* vertex on the disc carries weights.
+  So the skinning lives entirely in the 77 `skin` records.
+- `atWorld0..3` is a **per-instance world matrix in the vertex stream**:
   hardware instancing.
 
-`atColur0` è un refuso degli sviluppatori rimasto nel binario, come
-`SetDofApaerture` nell'API Lua (RECON §6.7).
+`atColur0` is a developers' typo left in the binary, like `SetDofApaerture`
+in the Lua API (RECON §6.7).
 
-## Illuminazione
+## Lighting
 
-Per ciascuna delle 4 luci: `gLightAmbient`, `gLightColor`, `gLightAttenuation`,
-`gSpotLightCutoff`, più direzione e posizione in model/view/world space e
-`gSpotLightDir` — quindi **direzionali, puntiformi e spot**.
+For each of the 4 lights: `gLightAmbient`, `gLightColor`,
+`gLightAttenuation`, `gSpotLightCutoff`, plus direction and position in
+model/view/world space and `gSpotLightDir` — so **directional, point and spot**
+lights.
 
-In più un blocco di **rim lighting**: `gRimSpecularLightColor0..3` e
-`gRimSpecularParam`. Materiale: `gMaterialDiffuse`,
+On top of that, a **rim lighting** block: `gRimSpecularLightColor0..3` and
+`gRimSpecularParam`. Material: `gMaterialDiffuse`,
 `gMaterialDiffuseAttenuation`, `gMaterialEmission`, `gMaterialSpecularPow`,
 `gGlobalAmbientAndMateAlpha`.
 
-## La luce, e chi ce l'ha già — `view.sky_profile`, `view.py light`
+## The light, and who already has it — `view.sky_profile`, `view.py light`
 
-Gli uniform qui sopra dicono *quali* luci la pipeline accetta. Quali siano
-**accese in una mappa** è un'altra domanda, e la risposta è che nel dato di
-mappa non ci sono affatto:
+The uniforms above say *which* lights the pipeline accepts. Which ones are
+**switched on in a map** is another question, and the answer is that the map
+data has none at all:
 
 ```
-record `light` (tipo 9) nei 167 .pac delle mappe        0
-record `light` in tutto il disco                      400   una per file
-  di nome `ambient-environment-light`                 399
-  cono 0,69813 rad = 40 gradi, decadimento +inf     400/400
+`light` records (type 9) in the 167 map .pac files      0
+`light` records on the whole disc                     400   one per file
+  named `ambient-environment-light`                   399
+  cone 0.69813 rad = 40 degrees, falloff +inf     400/400
 ```
 
-Quaranta gradi e decadimento infinito sono i valori di partenza
-dell'esportatore, e il colore lo conferma: 336 luci bianche e 62 dello stesso
-beige, distribuite su un insieme che non ha senso di gioco — otto boss, sette
-mappe d'interfaccia del sotterraneo, `NameEntry`, `Option`. È l'ambiente di
-lavoro di chi ha esportato, non l'illuminazione della scena. Il colore
-ambiente dell'header (`+0x60`) vale `0,8 0,8 0,8` in 399 file su 399.
+Forty degrees and an infinite falloff are the exporter's starting values, and
+the colour confirms it: 336 white lights and 62 of the same beige, spread
+over a set that makes no sense in game terms — eight bosses, seven dungeon
+interface maps, `NameEntry`, `Option`. It is the working environment of
+whoever did the export, not the lighting of the scene. The header's ambient
+colour (`+0x60`) is `0.8 0.8 0.8` in 399 files of 399.
 
-### Perché non serve: è cotta nei vertici, e in un mondo di cubi si rilegge
+### It is not needed: it is baked into the vertices, and in a world of cubes it can be read back
 
-Le normali di questa geometria sono **sei**, quindi basta raggruppare i colori
-di vertice per faccia. Su `field_16`:
+The normals of this geometry are **six**, so grouping the vertex colours by
+face is enough. On `field_16`:
 
-| faccia | vertici | luminanza |
+| face | vertices | luminance |
 |---|---:|---:|
-| in su | 409.989 | 0,969 |
-| sud | 132.357 | 0,709 |
-| ovest | 167.995 | 0,703 |
-| nord | 208.204 | 0,697 |
-| est | 172.619 | 0,695 |
-| in giù | 31.305 | 0,494 |
+| up | 409,989 | 0.969 |
+| south | 132,357 | 0.709 |
+| west | 167,995 | 0.703 |
+| north | 208,204 | 0.697 |
+| east | 172,619 | 0.695 |
+| down | 31,305 | 0.494 |
 
-I **quattro fianchi concordano entro l'1%**: non è una lambertiana, che avrebbe
-un lato chiaro e uno scuro, ma una luce d'ambiente **verticale** — il cielo. E
-non è un caso di una mappa: sulle 40 di campagna la mediana dello scarto fra i
-quattro fianchi è **2,8%**, e la faccia in su è più chiara in 38 su 40.
+The **four sides agree within 1%**. That is not a Lambertian, which would have
+a bright side and a dark one, but a **vertical** ambient light: the sky. Nor
+is it one map's accident: over the 40 overworld maps the median spread
+between the four sides is **2.8%**, and the up face is the brighter in 38 of
+40.
 
-**La prova è che il verso si inverte.** Al chiuso la stessa misura dà il
-contrario, e con i fianchi ancora più concordi:
-
-```
-                su/fianchi   giù/fianchi   scarto fra i fianchi
-campagna  40       1,415         0,661            2,8%
-chiuso   126       0,822         1,000            0,1%
-```
-
-Dove c'è un soffitto la faccia in su è la **più scura**, e quella in giù torna
-al livello dei fianchi perché sotto non c'è più un cielo da cui distinguersi.
-Un numero che si comporta così è luce.
-
-### E i posti si mettono in fila da soli
-
-Il rapporto su/fianchi, letto per località — i nomi sono quelli che
-`MapParameter` dichiara, non nostri:
+**The proof is that the direction reverses.** Indoors the same measurement
+gives the opposite, with the sides agreeing even more closely:
 
 ```
-1,52  Dash Circuit          0,82  i sette templi (0,814-0,822)
-1,47  Lake Garland          0,78  Sacred Cave
-1,45  Nuntra Desert         0,75  Fairy's Cave, Rat Hole, Cave
-1,40  Gilgamesh Beach       0,73  Grave of the Hero
-1,38  Brilord Plains        0,68  Mountain Path, Fairy Spring
+                up/sides     down/sides    spread between the sides
+overworld  40      1.415         0.661            2.8%
+indoors   126      0.822         1.000            0.1%
 ```
 
-Spiagge, pianure e deserto in cima; in fondo, **sotto i templi, le grotte**. La
-misura ordina i posti del gioco come li ordinerebbe chi ci cammina, e nessuno
-di questi nomi è entrato nel conto.
+Where there is a ceiling, the up face is the **darkest**, and the down face
+comes back to the level of the sides, because below it there is no longer a
+sky to set it apart. A number that behaves like that is light.
 
-Le due sole mappe `field_*` che si comportano da chiuso sono `field_50` e
-`field_91`, che è **la corte del castello**.
+### And the places line up by themselves
 
-### Chi va illuminato, e con che luce
-
-La regola non è «mappa sì, personaggi no», ed è misurata due volte. Il colore
-di vertice è illuminazione dove **varia dentro una stessa direzione di
-faccia** — dove cioè c'è occlusione cotta vertice per vertice, che il cielo da
-solo non spiega:
+The up/sides ratio, read per location — the names are the ones
+`MapParameter` declares, not ours:
 
 ```
-campagna   scarto entro i fianchi  42%     241 livelli distinti
-chiuso                              3%       8 livelli
+1.52  Dash Circuit          0.82  the seven temples (0.814-0.822)
+1.47  Lake Garland          0.78  Sacred Cave
+1.45  Nuntra Desert         0.75  Fairy's Cave, Rat Hole, Cave
+1.40  Gilgamesh Beach       0.73  Grave of the Hero
+1.38  Brilord Plains        0.68  Mountain Path, Fairy Spring
 ```
 
-I sotterranei ne portano **due soli** (`d_1_1_1`: un verde muschio e il nero),
-e due livelli non sono una luce: lì la geometria va illuminata come tutto il
-resto, o le pareti diventano una massa sola. La soglia (30%) non è a occhio —
-una seconda misura che non sa niente della prima, *«la faccia in su è più
-chiara dei fianchi?»*, taglia le mappe nello stesso posto: **165 su 167**.
+Beaches, plains and desert at the top; at the bottom, **below the temples,
+the caves**. The measurement orders the game's places the way someone walking
+through them would, and none of these names went into the count.
 
-Non possono portarla, per costruzione, i **modelli di libreria**: un vaso
-istanziato 1.022 volte non ha nei propri vertici la luce di 1.022 posti. E
-infatti `c_obj_all` ha le sei facce entro il **5%** l'una dall'altra — lì il
-colore di vertice è la tinta.
+The only two `field_*` maps that behave as indoors are `field_50` and
+`field_91`, which is **the castle courtyard**.
 
-A chi resta si dà **ambiente più sole**, che è la forma che il disco dichiara,
-con i suoi numeri:
+### Who gets lit, and with what light
 
-- `Event:SetSunLightAngle(5.65,62.59); -- yaw, pitch` — il commento è degli
-  autori. 16 chiamate, 8 valori distinti, **tutti i pitch fra 57,75 e 86
-  gradi**: il sole di questo gioco è sempre alto. Mediana 73,5.
-- `SetParallelLight(0.15,0.15,0.15, 0.08,0.08,0.08)` — due terne, la prima
-  sempre più chiara: diffusa e ambiente. Il rapporto `amb/(amb+dif)` vale 0,29,
-  0,35 e 0,43, mediana **0,35**.
-
-E l'ambiente non è piatto: segue il profilo verticale che *quella* mappa
-mostra nei propri vertici, così chi cammina in una grotta prende la luce della
-grotta. L'unica cosa rimasta nostra è che gli yaw, a differenza dei pitch, sono
-sparsi da −180 a 31 — sono della scena, non del mondo — e qui se ne prende uno.
-
-### Cosa cambia in un fotogramma
-
-Quel che è sparito è una **direzione orizzontale che il dato non ha**: la
-lambertiana di prima veniva da `(0,4 0,8 0,45)`, cioè 42 gradi di azimut, e
-spegneva a 0,35 i due fianchi che le davano le spalle — sopra un colore che era
-già la luce del posto. Su `field_16`:
+The rule is not "the map yes, the characters no", and it is measured twice.
+Vertex colour is lighting where it **varies within a single face direction**
+— that is, where there is occlusion baked vertex by vertex, which the sky
+alone does not explain:
 
 ```
-                   luminanza media   sotto 0,15   mediana
-prima                    0,195          47,9%      0,160
-dopo                     0,295           5,9%      0,281
+overworld   spread within the sides  42%     241 distinct levels
+indoors                               3%       8 levels
 ```
 
-Metà schermo stava sotto 0,15. Gli alberi rivolti a nord e a ovest erano neri.
+The dungeons carry **only two** (`d_1_1_1`: a moss green, and black), and two
+levels are not a light: there the geometry has to be lit like everything
+else, or the walls become a single mass. The threshold (30%) is not set by
+eye. A second measurement that knows nothing of the first, *"is the up face
+brighter than the sides?"*, cuts the maps at the same place: **165 of 167**.
 
-## Chi brilla di suo — il campo `emission`
+The **library models** cannot carry it, by construction: a vase instanced
+1,022 times does not hold in its vertices the light of 1,022 places. And
+indeed `c_obj_all` has its six faces within **5%** of one another — there,
+vertex colour is the tint.
 
-Cercando le torce si è trovato l'opposto: le torce **non** sono sorgenti
-dichiarate, e qualcos'altro sì. Il campo `emission` del record `material` non
-era mai stato usato dal renderer, ed è pieno:
+Whatever is left gets **ambient plus sun**, which is the form the disc
+declares, with the disc's own numbers:
+
+- `Event:SetSunLightAngle(5.65,62.59); -- yaw, pitch` — the comment is the
+  authors'. 16 calls, 8 distinct values, **every pitch between 57.75 and 86
+  degrees**: this game's sun is always high. Median 73.5.
+- `SetParallelLight(0.15,0.15,0.15, 0.08,0.08,0.08)` — two triples, the first
+  always the brighter: diffuse and ambient. The ratio `amb/(amb+dif)` is 0.29,
+  0.35 and 0.43, median **0.35**.
+
+And the ambient is not flat: it follows the vertical profile that *that* map
+shows in its own vertices, so whoever walks into a cave gets the cave's
+light. The one thing still ours is that the yaws, unlike the pitches, are
+scattered from −180 to 31 — they belong to the scene, not to the world — and
+here one of them is picked.
+
+### What changes in a frame
+
+What has gone is a **horizontal direction the data does not have**: the
+earlier Lambertian came from `(0.4 0.8 0.45)`, that is, 42 degrees of
+azimuth, and dimmed to 0.35 the two sides that had their backs to it — on top
+of a colour that was already the light of the place. On `field_16`:
 
 ```
-materiali con emissione non nulla      277 su 1.792 = 15,5%
-  la tavolozza del CharEditor          166   emissione 1 su tutti i canali
-  in c_obj_all                          33   di cui 21 lame magiche
-  gli altari delle sfere                  5
+                   mean luminance   below 0.15   median
+before                   0.195          47.9%      0.160
+after                    0.295           5.9%      0.281
 ```
 
-**Il caso limite dice come va letta.** I 166 del `CharEditor` sono la tavolozza
-dell'editor del personaggio e valgono `1, 1, 1`: un pannello d'interfaccia non
-riceve luce, si mostra a colore pieno. Quindi l'emissione non è un addendo — che
-li saturerebbe a bianco — ma un **pavimento**: `luce = max(illuminazione,
-emissione)`, per canale. Con questa lettura il caso dell'interfaccia torna da
-solo e niente satura.
+Half the screen was below 0.15. The trees facing north and west were black.
 
-E gli altri sono esattamente le cose che in un gioco brillano:
+## What shines on its own — the `emission` field
+
+Looking for the torches turned up the opposite: the torches are **not**
+declared sources, and something else is. The `emission` field of the
+`material` record had never been used by the renderer, and it is full:
 
 ```
-MR_i_mwp_06_light   emis (1.00, 0.32, 0.11)   diff bianco     lama rosso fuoco
-MR_i_mwp_12_light   emis (0.15, 0.64, 0.87)   diff bianco     lama azzurra
-MR_i_mwp_15_light   emis (0.22, 0.83, 0.18)   diff bianco     lama verde
-MR_i_mwp_22_light   emis (1.00, 0.38, 0.99)   diff bianco     lama magenta
-MR_c_enm_10tamaa    emis 0,30                 玉, il proiettile del nemico
-RM_c_bos_bullet     emis 0,60                 il proiettile del boss
+materials with non-zero emission       277 of 1,792 = 15.5%
+  the CharEditor palette               166   emission 1 on every channel
+  in c_obj_all                          33   of which 21 magic blades
+  the orb altars                          5
 ```
 
-Le **21 lame magiche** hanno diffuse bianco e tutto il colore nell'emissione:
-la lama è una sorgente, e il colore di ciascuna è dichiarato uno per uno. Il
-nome del materiale finisce in `_light` in 21 casi su 21.
+**The edge case says how to read it.** The 166 in `CharEditor` are the
+character editor's palette, and they are `1, 1, 1`: an interface panel
+receives no light, it shows at full colour. So emission is not an addend —
+that would saturate them to white — but a **floor**:
+`light = max(lighting, emission)`, per channel. With this reading the
+interface case comes out right by itself, and nothing saturates.
 
-### Le sei sfere, e uno scambio di materiale
+And the others are exactly the things that glow in a game:
 
-I cinque emissivi della libreria di mappa sono le sfere degli altari, e
-leggerne il colore chiude un cerchio della sessione 12 — che aveva stabilito
-l'ordine degli altari dai nomi degli item, senza poterlo vedere:
+```
+MR_i_mwp_06_light   emis (1.00, 0.32, 0.11)   diff white      fire-red blade
+MR_i_mwp_12_light   emis (0.15, 0.64, 0.87)   diff white      sky-blue blade
+MR_i_mwp_15_light   emis (0.22, 0.83, 0.18)   diff white      green blade
+MR_i_mwp_22_light   emis (1.00, 0.38, 0.99)   diff white      magenta blade
+MR_c_enm_10tamaa    emis 0.30                 玉, the enemy's projectile
+RM_c_bos_bullet     emis 0.60                 the boss's projectile
+```
 
-| altare | mappa | l'item dello script | materiale | colore | il walkthrough |
+The **21 magic blades** have a white diffuse and all their colour in the
+emission: the blade is a source, and each blade's colour is declared one by
+one. The material name ends in `_light` in 21 cases of 21.
+
+### The six orbs, and a material swap
+
+The five emissives in the map library are the altar orbs, and reading their
+colour closes a loop opened in session 12, which had established the order of
+the altars from the item names without being able to see it:
+
+| altar | map | the script's item | material | colour | the walkthrough |
 |---|---|---|---|---|---|
 | 4116 | `D_1_3` | `item_yelloworb` | `orb_116` | (211, 198, 53) | Yellow Orb |
 | 4117 | `D_2_3` | `item_greenorb` | `orb_117` | (89, 189, 44) | Green Orb |
@@ -226,70 +230,70 @@ l'ordine degli altari dai nomi degli item, senza poterlo vedere:
 | 4120 | `D_5_3` | `item_redorb` | `orb_120` | (226, 44, 44) | Red Orb |
 | 4121 | `D_6_3` | `item_whiteorb` | **`orb_118`** | (118, 75, 189) | **Purple** Orb |
 
-**Sei su sei** con i nomi che il walkthrough usa, e i due nomi interni che non
-descrivono un colore — `gray` e `white` — sono proprio i due che il modello
-smentisce: la sfera è arancione e viola. Il nome che il gioco mostra vince su
-quello che gli autori si sono scritti.
+**Six of six** with the names the walkthrough uses, and the two internal
+names that do not name a hue — `gray` and `white` — are exactly the two the
+model contradicts: the orbs are orange and purple. The name the game shows
+wins over the one the authors wrote down for themselves.
 
-Due cose viste per averle guardate invece che dedotte:
+Two things seen by looking at them rather than inferring them:
 
-- `m_obj_118_b` usa il materiale `orb_121` e `m_obj_121_b` usa `orb_118` — uno
-  **scambio esatto**, negli altri quattro il numero combacia. Dedurre il
-  materiale dal numero del modello avrebbe dato due colori sbagliati; a dirlo è
-  l'indice a `+0x00` del chunk.
-- `orb_121` è **l'unico dei sei senza emissione**. L'anomalia segue il
-  materiale e non il posto, quindi finisce sulla sfera del terzo tempio, che è
-  l'unica delle sei a non brillare.
+- `m_obj_118_b` uses the material `orb_121`, and `m_obj_121_b` uses
+  `orb_118` — an **exact swap**; in the other four the number matches.
+  Inferring the material from the model number would have given two wrong
+  colours; what settles it is the index at `+0x00` of the chunk.
+- `orb_121` is **the only one of the six with no emission**. The anomaly
+  follows the material and not the place, so it ends up on the orb of the
+  third temple, which is the only one of the six that does not glow.
 
-## Ombre
+## Shadows
 
-Due shadow map: `gShadowMap0_stage4`, `gShadowMap1_stage8`, con
-`gShadowMapParams`, `gShadowMapPolygonOffset` e le matrici di proiezione
-ombra nei tre spazi (`gModelShadowMtx0/1`, `gViewShadowMtx0/1`,
-`gWorldShadowMtx0`). Due mappe possono voler dire cascade oppure due
-proiettori distinti.
+Two shadow maps: `gShadowMap0_stage4`, `gShadowMap1_stage8`, with
+`gShadowMapParams`, `gShadowMapPolygonOffset` and the shadow projection
+matrices in the three spaces (`gModelShadowMtx0/1`, `gViewShadowMtx0/1`,
+`gWorldShadowMtx0`). Two maps can mean cascades, or two separate projectors.
 
-## Superfici
+## Surfaces
 
-- **Normal mapping**: `gNormalMap_stage2`, con `gNormalMapBaseAxisR` e
-  `gNormalMapBaseAxisG` — la convenzione dei canali è configurabile, quindi
-  l'orientamento del verde non va dato per scontato.
+- **Normal mapping**: `gNormalMap_stage2`, with `gNormalMapBaseAxisR` and
+  `gNormalMapBaseAxisG` — the channel convention is configurable, so the
+  orientation of the green channel must not be taken for granted.
 - **Parallax mapping**: `gParallaxMapParams`.
-- **Environment mapping**: `gCubeEnvironmentMap_stage3` oppure
-  `gSphereEnvironmentMap_stage3`, con `gEnvironmentMapColor` e
-  `gEnvironmentMapFresnel`. È qui che entra `ref_01.dds`, l'unica cubemap del
-  gioco, e il riflesso pesato per Fresnel dell'acqua descritto da YEBIS.
-- **Depth of field**: `gDOFParams` — il DOF di YEBIS arriva agli shader come
-  uniform, pilotato dal Lua (RECON §6.7).
-- Vari: `gAlphaTestParams`, `gPolygonOffset`, `gTexCoordMatrix0..2`,
+- **Environment mapping**: `gCubeEnvironmentMap_stage3` or
+  `gSphereEnvironmentMap_stage3`, with `gEnvironmentMapColor` and
+  `gEnvironmentMapFresnel`. This is where `ref_01.dds` comes in, the game's
+  only cubemap, and with it the Fresnel-weighted water reflection that YEBIS
+  describes.
+- **Depth of field**: `gDOFParams` — the YEBIS DOF reaches the shaders as a
+  uniform, driven by the Lua (RECON §6.7).
+- Miscellaneous: `gAlphaTestParams`, `gPolygonOffset`, `gTexCoordMatrix0..2`,
   `gUtilityColorTexture_stage1` / `gUtilityColorCubeTexture_stage1`.
 
-## Assegnazione degli stage di texture
+## Texture stage assignment
 
-| Stage | Contenuto |
+| Stage | Contents |
 |---:|---|
-| 0 | colore base |
-| 1 | utility color (2D o cube) |
+| 0 | base colour |
+| 1 | utility colour (2D or cube) |
 | 2 | normal map |
-| 3 | environment map (cube o sphere) |
+| 3 | environment map (cube or sphere) |
 | 4 | shadow map 0 |
 | 8 | shadow map 1 |
 
-## Perché conta
+## Why it matters
 
-Questo è, di fatto, **la specifica del sistema di materiali** che l'host dovrà
-fornire: quali attributi accetta la pipeline, quali uniform pilotano il
-materiale, quante luci, quali mappe e in quali stage. Riscrivere gli shader in
-GLSL o HLSL diventa un lavoro di traduzione a interfaccia nota, invece che di
-ricostruzione per tentativi.
+This is, in effect, **the specification of the material system** the host
+will have to provide: which attributes the pipeline accepts, which uniforms
+drive the material, how many lights, which maps and on which stages.
+Rewriting the shaders in GLSL or HLSL becomes a job of translation against a
+known interface, instead of reconstruction by trial and error.
 
-L'assegnazione degli stage qui sopra ha poi trovato una **conferma indipendente
-nei dati**: i record `material` dei `DSBF` hanno quattro slot di texture, e la
-posizione nello slot coincide con lo stage. Nello slot 2 finiscono solo file
-`*_nm` / `*_nml`, nello slot 3 solo `forref_*`, e lo slot 1 non è mai usato —
-vedi [`format_dsb.md`](format_dsb.md) §material. Sono agganciati anche diffuse,
-ambient, emission, specular e l'esponente speculare.
+The stage assignment above later found an **independent confirmation in the
+data**: the `material` records of the `DSBF` files have four texture slots,
+and the slot position matches the stage. Only `*_nm` / `*_nml` files end up in
+slot 2, only `forref_*` in slot 3, and slot 1 is never used — see
+[`format_dsb.md`](format_dsb.md) §material. Diffuse, ambient, emission,
+specular and the specular exponent are hooked up as well.
 
-Resta da collegare gli uniform rimanenti: i 43 identificativi di shader del
-campo material +0x28, e i **tag numerici** delle tabelle di binding dei `DSBF`,
-che associano ogni `float4` a un registro di costanti.
+The remaining uniforms are still to be connected: the 43 shader identifiers
+of the material field at +0x28, and the **numeric tags** of the `DSBF`
+binding tables, which associate each `float4` with a constant register.

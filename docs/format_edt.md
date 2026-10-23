@@ -1,115 +1,117 @@
-# Formato EDT — i personaggi voxel dell'editor
+# The EDT format — the editor's voxel characters
 
-**Stato: risolto.** Il percorso arriva **esattamente sull'ultimo byte in 90 file
-su 90**, per 260.860 voxel. Parser: [`tools/edt.py`](../tools/edt.py).
+**Status: solved.** The walk lands **exactly on the last byte in 90 files out
+of 90**, over 260,860 voxels. Parser: [`tools/edt.py`](../tools/edt.py).
 
-È il formato con cui il gioco descrive un personaggio disegnato dot per dot —
-quello che gli dà il titolo. Leggerlo vuol dire poter mostrare il protagonista
-che il giocatore ha fatto invece di un modello di riserva.
+This is the format in which the game describes a character drawn dot by dot —
+the thing the game is named after. Reading it means the hero the player made
+can be shown instead of a stand-in model.
 
 ```
-python tools/edt.py info  <file.edt>        intestazione, pose, voxel
-python tools/edt.py sheet <dir> out.png     il provino a contatto dei 90
-python tools/edt.py check                   le verifiche interne (6 proprietà)
+python tools/edt.py info  <file.edt>        header, poses, voxels
+python tools/edt.py sheet <dir> out.png     the contact sheet of all 90
+python tools/edt.py check                   the internal checks (6 properties)
 ```
 
-Tutto big-endian, e **niente allineamento**: è un flusso di byte, quindi una
-stringa di lunghezza dispari sposta di uno tutto quel che segue. È il motivo per
-cui `angel.edt` ha il corpo a `0x36` e `default_01.edt` a `0x30`.
+Everything is big-endian, and there is **no alignment**: it is a byte stream,
+so a string of odd length shifts everything after it by one. That is why
+`angel.edt` has its body at `0x36` and `default_01.edt` at `0x30`.
 
-## Il file
+## The file
 
-| | campo |
+| | field |
 |---|---|
-| `'EDTFILE1.9'` + 2 byte a zero | magic, 12 byte |
-| `u32 len` + `len` byte | **autore**, UTF-8 (`プレイヤー`) |
-| `u32` | bandiera, 0 o 1 |
-| `u32 len` + `len` byte | **nome del personaggio** (`勇者の子孫`) |
-| `float[14]` | parametri dell'editor, tutti interi piccoli (0–10) |
-| `u32` | **numero di parti**, che è 6 in tutti e 90 i file |
+| `'EDTFILE1.9'` + 2 zero bytes | magic, 12 bytes |
+| `u32 len` + `len` bytes | **author**, UTF-8 (`プレイヤー`) |
+| `u32` | flag, 0 or 1 |
+| `u32 len` + `len` bytes | **character name** (`勇者の子孫`) |
+| `float[14]` | editor parameters, all small integers (0–10) |
+| `u32` | **number of parts**, which is 6 in all 90 files |
 
-e poi, per ogni parte:
+and then, for each part:
 
-| | campo |
+| | field |
 |---|---|
-| `u32` | numero di voxel |
-| `voxel[]` | 20 byte l'uno |
-| `float[6]` | coda della parte |
+| `u32` | number of voxels |
+| `voxel[]` | 20 bytes each |
+| `float[6]` | the part's tail |
 
-La coda sta **dopo** ogni parte, anche l'ultima: è così che il conto torna al
-byte. Trovarla è stata la sola cosa che il primo percorso ha sbagliato — si
-fermava 24 byte prima della fine, e 24 è esattamente sei float.
+The tail comes **after** every part, the last one included: that is what makes
+the count land on the byte. Finding it was the only thing the first walk got
+wrong — it stopped 24 bytes short of the end, and 24 is exactly six floats.
 
-## Il voxel
+## The voxel
 
-Venti byte: `u32` posizione più `float[4]`.
+Twenty bytes: a `u32` position and a `float[4]`.
 
 ```
-posizione   0x00 XX YY ZZ    il primo byte è sempre zero, e i tre seguenti
-                             stanno tutti fra 0 e 15
-float[0..2] colore RGB in 0..1
-float[3]    da 0 a 6, sette valori interi: la finitura
+position    0x00 XX YY ZZ    the first byte is always zero, and the three
+                             after it all lie between 0 and 15
+float[0..2] RGB colour in 0..1
+float[3]    0 to 6, seven integer values: the finish
 ```
 
-**Sedici per lato non è un numero qualsiasi**: è la stessa griglia di
-`data/shaders/water_col.dds`, che ha 16 quadretti per lato perché una casella
-del mondo è sedici dot (sessione 5). Il personaggio dell'editor sta quindi in
-un cubo di **16×16×16 per parte**, cioè una casella — e una casella è anche
-l'altezza di un personaggio, misurata a sua volta per un'altra strada in
-sessione 4. Tre file che non si conoscono, la stessa unità.
+**Sixteen to a side is not an arbitrary number.** It is the grid of
+`data/shaders/water_col.dds`, which has 16 squares to a side because one cell
+of the world is sixteen dots (session 5). An editor character therefore lives
+in a **16×16×16 cube per part**, that is, one cell — and one cell is also the
+height of a character, measured by another route in session 4. Three files
+that know nothing of each other, one unit.
 
-## Le sei parti sono sei pose
+## The six parts are six poses
 
-I conti lo dicono da soli: in `angel.edt` sono 261, 256, 246, 240, 263, 267
-voxel. Sei numeri così vicini non sono sei pezzi di un corpo — la testa e un
-braccio non hanno lo stesso volume — sono sei volte lo stesso personaggio.
+The counts say so on their own: in `angel.edt` they are 261, 256, 246, 240,
+263 and 267 voxels. Six numbers that close are not six pieces of a body — a
+head and an arm do not have the same volume. They are the same character six
+times.
 
-Lo confermano due misure:
+Two measurements confirm it:
 
-- fra la prima parte e le altre cinque, il **60,4%** dei voxel sta nella stessa
-  posizione;
-- le sei scatole si sovrappongono tutte, e occupano lo stesso volume.
+- between the first part and the other five, **60.4%** of the voxels sit in
+  the same position;
+- the six bounding boxes all overlap, and occupy the same volume.
 
-Che è la stessa cosa già letta da un'altra parte in
-[`entities.md`](entities.md): i personaggi di questo gioco **non hanno
-scheletro**, e i figli di un nodo sono fotogrammi interi. Là erano da 2 a 6;
-qui sono sei, sempre — perché l'editor ne fa sempre sei, e il gioco ne usa
-quanti gliene servono.
+This is the same thing [`entities.md`](entities.md) had already read from
+another direction: the characters of this game **have no skeleton**, and the
+children of a node are whole frames. There they were 2 to 6; here they are
+always six — because the editor always makes six, and the game uses as many as
+it needs.
 
-## Avanti è la Z minima
+## Forward is minimum Z
 
-Il primo provino usciva **di spalle**, e a dirlo è stato chi lo guardava senza
-sapere cosa aspettarsi. Non era un difetto di lettura: prendendo la Z massima
-si ottengono le nuche — niente occhi, solo capelli — e prendendo la minima
-compaiono le facce.
+The first contact sheet came out **facing away**, and it was the person
+looking at it, with no idea what to expect, who said so. It was not a reading
+error: taking the maximum Z gives the backs of the heads — no eyes, only
+hair — and taking the minimum brings the faces out.
 
-Cioè i personaggi dell'editor sono authorati **verso −Z**, che è esattamente la
-convenzione che [`entities.md`](entities.md) aveva già dedotto in un'altra
-sessione, guardando le mesh del gioco con `view.py char c_npc_05 --azim 180`.
-Due file diversi, scritti per scopi diversi, la stessa convenzione.
+So the editor's characters are authored **facing −Z**, which is exactly the
+convention [`entities.md`](entities.md) had already inferred in another
+session, looking at the game's meshes with `view.py char c_npc_05 --azim 180`.
+Two different files, written for different purposes, the same convention.
 
-E si misura senza guardare, il che la rende una proprietà e non un'impressione:
-in `black_smith.edt` il piano davanti porta **9** voxel e quello dietro **40**.
-Una faccia è incavata — occhi, bocca — e una nuca è piena.
+It can also be measured without looking, which makes it a property rather than
+an impression: in `black_smith.edt` the front plane carries **9** voxels and
+the back one **40**. A face is hollowed out — eyes, mouth — and the back of a
+head is solid.
 
-## La verifica che conta
+## The check that counts
 
-Il provino a contatto: 90 personaggi disegnati prendendo, per ogni colonna, il
-voxel più avanti. Non è un render — è un modo di guardare i dati — e basta a
-riconoscerli tutti: cavalieri, maghi, Babbo Natale, un re con la corona,
-draghi, scheletri con gli occhi rossi, un orso, una zucca. E i quattro preset
-che si controllano a occhio tornano col proprio nome di file: `angel` ha
-l'aureola e le ali, `dragon` le corna, `black_smith` la barba bianca e il
-grembiule, `boxer` i guantoni.
+The contact sheet: 90 characters, drawn by taking the frontmost voxel of each
+column. It is not a render — it is a way of looking at the data — and it is
+enough to recognise every one of them: knights, wizards, Father Christmas, a
+king with a crown, dragons, skeletons with red eyes, a bear, a pumpkin. And
+the four presets that can be checked by eye match their own file names:
+`angel` has the halo and the wings, `dragon` the horns, `black_smith` the
+white beard and the apron, `boxer` the gloves.
 
-## Cosa resta
+## What is left
 
-- **I 14 parametri dell'intestazione**: interi fra 0 e 10, e cambiano da
-  personaggio a personaggio. Hanno la forma degli attributi che l'editor
-  dichiara, ma nessun oracolo li lega ancora a niente.
-- **La coda di sei float** per parte.
-- **La finitura** (0–6): sette valori, e non si sa cosa scelgano.
-- **I `.SAV`**: sono un'altra cosa. Nessun magic, cominciano subito con la
-  stessa coppia `u32 len + UTF-8`, e `test.SAV` porta dentro
-  `edt/preset/pumpkin.edt` — quindi un salvataggio **riferisce** un preset per
-  percorso invece di incorporarlo. Tre file, ~210 kB l'uno.
+- **The 14 header parameters**: integers between 0 and 10, varying from
+  character to character. They have the shape of the attributes the editor
+  declares, but no oracle ties them to anything yet.
+- **The tail of six floats** per part.
+- **The finish** (0–6): seven values, and what they select is unknown.
+- **The `.SAV` files**: these are something else. No magic; they start
+  straight away with the same `u32 len + UTF-8` pair, and `test.SAV` carries
+  `edt/preset/pumpkin.edt` — so a save **refers** to a preset by path instead
+  of embedding it. Three files, ~210 kB each.

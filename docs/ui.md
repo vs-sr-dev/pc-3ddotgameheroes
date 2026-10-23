@@ -1,27 +1,27 @@
-# Le schermate di sistema — `tools/ui.py`
+# The system screens — `tools/ui.py`
 
-**Stato: si navigano.** 136 schermate dichiarate sul disco, caricate con la VM
-Lua ed eseguite: la scena al suo posto, le scritte dove il descrittore le mette,
-il cursore dove dice lui — e i tasti che lo muovono, perché anche quelli sono
-dichiarati.
+**Status: navigable.** The disc declares 136 screens. They are loaded with the
+Lua VM and run: the scene in its place, the text where the descriptor puts
+it, the cursor where the descriptor says — and the buttons that move it,
+because those are declared too.
 
 ```
-python tools/ui.py list                   le schermate dichiarate
-python tools/ui.py show ClearSave out.png una schermata composta
-python tools/ui.py menus Pause            le voci, e cosa spiegano
-python tools/ui.py keys EnemyAlbum        la barra: quali azioni, con che tasto
-python tools/ui.py drive Pause giu,giu,croce out.png    navigata
-python tools/ui.py floors 5               i piani di un sotterraneo
-python tools/ui.py clips Option           la tabella delle clip, per indice
-python tools/ui.py anim ClearSave a.png   i fotogrammi dell'apertura
-python tools/ui.py map 1 1 out.png        la mappa di un sotterraneo
-python tools/ui.py check                  le verifiche interne (29 proprietà)
+python tools/ui.py list                   the declared screens
+python tools/ui.py show ClearSave out.png one screen, composed
+python tools/ui.py menus Pause            the items, and what they explain
+python tools/ui.py keys EnemyAlbum        the bar: which actions, on which button
+python tools/ui.py drive Pause giu,giu,croce out.png    navigated
+python tools/ui.py floors 5               the floors of a dungeon
+python tools/ui.py clips Option           the clip table, by index
+python tools/ui.py anim ClearSave a.png   the frames of the opening
+python tools/ui.py map 1 1 out.png        the map of a dungeon
+python tools/ui.py check                  the internal checks (29 properties)
 ```
 
-L'interfaccia di questo gioco è **dato, non codice**: 109 file Lua sotto `data/`
-dichiarano salvataggio, opzioni, pausa, game over, negozio, album dei nemici e
-le venti mappe dei sotterranei. Si porta senza riscriverla, esattamente come gli
-script di evento.
+This game's interface is **data, not code**. 109 Lua files under `data/`
+declare save, options, pause, game over, the shop, the enemy album and the
+twenty dungeon maps. It ports without being rewritten, exactly like the event
+scripts.
 
 ```lua
 ClearSave = {
@@ -37,70 +37,71 @@ ClearSave = {
 };
 ```
 
-Si caricano con `lupa` e non con un parser nostro, per la stessa ragione per cui
-si carica così il font: **sono Lua**, e la VM li legge meglio di qualunque cosa
-scritta da noi.
+They are loaded with `lupa`, not with a parser of our own, for the same reason
+the font is: **they are Lua**, and the VM reads them better than anything we
+would write.
 
-## Lo schermo virtuale è uno solo
+## There is one virtual screen
 
-Che le coordinate dei descrittori fossero in uno schermo 1280×720 era già noto —
-`X=640` è il centro. Quello che permette di comporre è che **anche le scene 3D
-ci vivono dentro**: la larghezza mediana delle 115 è 1280,0 esatti, e la
-dissolvenza a piena pagina `Fade/Fade.ps3.dsb` — che per definizione copre lo
-schermo e basta — misura `x [0, 1280]`, `y [-720, 0]` al decimale.
+That the descriptors' coordinates live in a 1280×720 screen was already known
+— `X=640` is the centre. What makes composition possible is that **the 3D
+scenes live in it too**: the median width of the 115 scenes is exactly
+1280.0, and the full-page fade `Fade/Fade.ps3.dsb` — which by definition
+covers the screen and nothing more — measures `x [0, 1280]`, `y [-720, 0]` to
+the decimal.
 
-Da lì le due conversioni, che sono una lettura e non una taratura:
+From there the two conversions follow. They are a reading, not a calibration:
 
 ```
-schermo_x = modello_x
-schermo_y = −modello_y      la Y del modello cresce verso l'alto
-z                           non è profondità: è il piano di sovrapposizione
-                            (−90 la dissolvenza, −50 il fondo, 0 il fronte)
+screen_x = model_x
+screen_y = −model_y         the model's Y grows upwards
+z                           is not depth: it is the stacking plane
+                            (−90 the fade, −50 the background, 0 the front)
 ```
 
-## Rettangoli, non triangoli
+## Rectangles, not triangles
 
-Dei **16.494 triangoli** delle 115 scene, 16.492 sono piatti in Z e **16.494 su
-16.494** hanno due lati sugli assi. Cioè l'interfaccia è fatta di rettangoli
-allineati, e disegnarla vuol dire ritagliare un pezzo di texture e incollarlo:
-esatto al pixel, senza una pipeline 3D.
+Of the **16,494 triangles** in the 115 scenes, 16,492 are flat in Z and
+**16,494 of 16,494** have two sides on the axes. The interface is made of
+axis-aligned rectangles, and drawing it means cutting a piece out of a texture
+and pasting it: pixel-exact, with no 3D pipeline.
 
-## Perché non bastava leggerli
+## Why reading them was not enough
 
-I descrittori erano letti da tre sessioni e mai eseguiti, e provando si capisce
-perché: **a riposo le schermate sono chiuse**.
+The descriptors had been read for three sessions and never run, and trying it
+shows why: **at rest the screens are closed**.
 
-Il nodo di ogni pezzo di `SelectA` ha **scala 0** su un asse — `(0,1,1)`,
-`(1,0,1)` — mentre la mesh sotto è intera: `Confirm_02b` misura 149×99. E le
-schermate a scorrimento hanno i pezzi parcheggiati fuori campo: il menu degli
-oggetti arriva a `x=2193`, quasi il doppio dello schermo.
+The node of every piece of `SelectA` has **scale 0** on one axis — `(0,1,1)`,
+`(1,0,1)` — while the mesh under it is whole: `Confirm_02b` measures 149×99.
+And the sliding screens have their pieces parked off screen: the item menu
+reaches `x=2193`, nearly twice the screen's width.
 
-Ad aprirle è l'animazione, ed è la quarta cosa che il descrittore dichiara —
-`Animation = {In, Main, Out, Cursor}`, quattro clip con inizio e durata. Il
-`.dsb` non contiene curve: fra i suoi otto tipi di oggetto (`texture`,
-`material`, `effect`, `light`, `camera`, `mesh`, `skin`, `node`) l'animazione
-non c'è. Quindi il moto lo mette il motore, e la posa finale è la scala a 1 —
-che è quello che fa `view.load(unfold=True)`.
+What opens them is the animation, and it is the fourth thing the descriptor
+declares — `Animation = {In, Main, Out, Cursor}`, four clips with a start and
+a duration. The `.dsb` holds no curves: among its eight object types
+(`texture`, `material`, `effect`, `light`, `camera`, `mesh`, `skin`, `node`)
+there is no animation. So the engine supplies the motion, and the final pose
+is the scale at 1 — which is what `view.load(unfold=True)` does.
 
-*Corollario: un dato che sembra vuoto può essere solo chiuso. La geometria era
-tutta lì; a nasconderla era uno zero in una scala.*
+*Corollary: data that looks empty may only be closed. The geometry was all
+there; what hid it was a zero in a scale.*
 
-## `Start` non è un tempo, è un indice
+## `Start` is not a time, it is an index
 
-Le clip si leggevano come `{Start, Size}` = inizio e durata su una linea del
-tempo. Il conto dice altro: sulle 42 schermate che dichiarano `In`, `Start`
-vale **0 tutte e 42 le volte**; `Main` vale 1 tutte e 38; `Out` vale 2 tutte e
-42. Un tempo che non cambia mai non è un tempo — è **la posizione in una
-tabella di clip**, e il nome della clip la determina. `Size` invece varia
-(0,4 / 0,5 / 1,0) ed è la durata in secondi.
+The clips were read as `{Start, Size}` = start and duration on a timeline.
+The count says otherwise. On the 42 screens that declare `In`, `Start` is
+**0 all 42 times**; `Main` is 1 all 38 times; `Out` is 2 all 42 times. A time
+that never changes is not a time — it is **the position in a clip table**,
+and the clip's name decides it. `Size`, on the other hand, varies
+(0.4 / 0.5 / 1.0) and is the duration in seconds.
 
-*I numeri sono cresciuti in sessione 9, quando le 17 schermate che
-`descriptors()` scartava sono rientrate: la proprietà non si è indebolita, ha
-retto su un quinto di casi in più.*
+*The numbers grew in session 9, when the 17 screens that `descriptors()` had
+been dropping came back in: the property did not weaken, it held over a fifth
+more cases.*
 
-Le schermate grosse lo rendono evidente, perché lì gli indici arrivano
-lontano e restano **densi e consecutivi**: `Option` va da 0 a 38 senza un buco.
-E come sono distribuiti dice cosa indicizzano:
+The large screens make it obvious, because there the indices reach far and
+stay **dense and consecutive**: `Option` runs from 0 to 38 without a gap. And
+how they are distributed says what they index:
 
 ```
 python tools/ui.py clips Option
@@ -110,45 +111,46 @@ python tools/ui.py clips Option
 [ 2] Display.WindowOut     [ 3] Sound.MessageIn    [23] Message.WindowIn
 ```
 
-I tre pannelli **condividono** gli indici 3–9 e hanno separati solo i propri
-0–2 / 20–22 / 23–25: la zona dei messaggi, la barra dei tasti e il cursore sono
-gli *stessi oggetti* riusati, e a cambiare è solo la finestra. Quindi l'indice
-non identifica un momento, identifica **la cosa che si muove**.
+The three panels **share** indices 3–9 and keep separate only their own
+0–2 / 20–22 / 23–25. The message area, the button bar and the cursor are the
+*same objects*, reused, and only the window changes. So the index does not
+identify a moment; it identifies **the thing that moves**.
 
-I dieci indici 10–19 sono le dieci tacche del volume, e sono dichiarati in un
-punto che si perde facilmente: `Volume` è un **array** e non un dizionario
-(`Volume={{Start=10,Size=1.0},...}`). Un percorritore che scende solo nei
-dizionari li salta e lascia un buco di dieci — che è esattamente quanti nodi
-`Volume00…Volume09` ha la scena. Il buco era nostro, non del disco.
+The ten indices 10–19 are the ten notches of the volume, and they are declared
+in a place that is easy to miss: `Volume` is an **array**, not a dictionary
+(`Volume={{Start=10,Size=1.0},...}`). A walker that only descends into
+dictionaries skips them and leaves a gap of ten — exactly as many as the
+scene's `Volume00…Volume09` nodes. The gap was ours, not the disc's.
 
-## Il moto: uno ce l'ha, l'altro no
+## The motion: one has it, the other does not
 
-Le due animazioni delle schermate sono due problemi diversi, e conviene non
-tenerli insieme come un'unica voce «manca l'animazione».
+The screens' two animations are two different problems, and they are better
+not kept together as a single "the animation is missing" entry.
 
-**L'apertura ha tutti e due gli estremi sul disco.** Il pezzo è esportato con
-la scala a zero e la mesh sotto è intera: da 0 a 1 c'è tutto, e la durata la
-dichiara `Size`. Non c'è niente da inventare, e infatti `unfold` non è più un
-interruttore ma un **fattore**:
+**The opening has both ends on the disc.** The piece is exported with its
+scale at zero and the mesh under it is whole: everything from 0 to 1 is there,
+and `Size` declares the duration. There is nothing to invent, and indeed
+`unfold` is no longer a switch but a **factor**:
 
 ```
 python tools/ui.py anim ClearSave frame.png --frames 6
 
-t=0.000s  aperta   0.0%      t=0.240s  aperta  60.0%
-t=0.080s  aperta  20.0%      t=0.320s  aperta  80.0%
-t=0.160s  aperta  40.0%      t=0.400s  aperta 100.0%
+t=0.000s  open   0.0%      t=0.240s  open  60.0%
+t=0.080s  open  20.0%      t=0.320s  open  80.0%
+t=0.160s  open  40.0%      t=0.400s  open 100.0%
 ```
 
-La finestra si apre come un televisore che si accende, ed è la scena a dirlo:
-`Confirm_01` è fatto di tre pezzi, `a` (505×4) e `c` (505×7) con **scala X = 0**
-e il corpo `b` (505×99) con **scala Y = 0**. Prima una riga orizzontale, poi il
-corpo in verticale. L'asse che si apre è dichiarato da quale scala è nulla.
+The window opens like a television switching on, and the scene is what says
+so: `Confirm_01` is made of three pieces, `a` (505×4) and `c` (505×7) with
+**scale X = 0**, and the body `b` (505×99) with **scale Y = 0**. First a
+horizontal line, then the body vertically. Which scale is null declares which
+axis opens.
 
-L'unica cosa non letta è la **curva**: qui si interpola lineare, perché è la
-sola scelta che non aggiunge un numero inventato.
+The only thing not read is the **curve**: here it interpolates linearly,
+because that is the one choice that adds no invented number.
 
-**Lo scorrimento ha un estremo solo.** Le schermate a scorrimento non sono
-chiuse da una scala: sono *spostate*, e il disco porta solo il parcheggio.
+**The slide has only one end.** The sliding screens are not closed by a
+scale: they are *moved*, and the disc carries only where they are parked.
 
 ```
 selectmenu_eng    Window01  x [ -600,  -18]  y [ 48, 294]
@@ -156,68 +158,66 @@ selectmenu_eng    Window01  x [ -600,  -18]  y [ 48, 294]
                   Message   x [ 1285, 2193]  y [555, 628]
 ```
 
-Il conto su tutte le scene: **38 pezzi parcheggiati fuori campo, 33 fuori solo
-in X**, cioè il moto è orizzontale — e la Y è già quella definitiva. Lo
-conferma il descrittore, che colloca «EQUIPMENT» a y=53 dentro `Window01`
-(48–294), «ITEMS» a y=308 dentro `Window02` (303–550) e i tasti a y=635 dentro
-la barra (632–666).
+The count over all the scenes: **38 pieces parked off screen, 33 of them off
+only in X**, so the motion is horizontal — and the Y is already the final one.
+The descriptor confirms it: it places "EQUIPMENT" at y=53 inside `Window01`
+(48–294), "ITEMS" at y=308 inside `Window02` (303–550) and the buttons at
+y=635 inside the bar (632–666).
 
-Ma **dove arrivino in X non sta da nessuna parte**: non nella scena, che ha
-solo il parcheggio, e non nel descrittore, che colloca il contenuto e non il
-contenitore. Interpolare fra parcheggio e posto non si può fare perché il posto
-manca. È questa — e solo questa — la parte che vale la pena chiedere
-all'EBOOT, e riguarda **5 schermate e 15 pezzi**: `Item`, `Orb`, `Option`,
-`NameEntry`, `GameOver`.
+But **where they land in X is nowhere**: not in the scene, which only has the
+parking place, and not in the descriptor, which places the content and not
+the container. Interpolating between parking place and destination cannot be
+done, because the destination is missing. This — and only this — is the part
+worth asking the EBOOT, and it concerns **5 screens and 15 pieces**: `Item`,
+`Orb`, `Option`, `NameEntry`, `GameOver`.
 
-## Il riquadro di dialogo, e il file che non era quello
+## The dialogue box, and the file that was not it
 
-Il riquadro del dialogo era l'ultimo pezzo disegnato da noi, e il TODO lo dava
-in `data/Balloon`. Non è lì. `balloon_eng.ps3.dsb` sono tre quadri di
-**1,6 × 0,6 unità di mondo** — 1,6 è la casella, cioè l'altezza di un
-personaggio — con tre materiali `CHECK`, `TALK`, `OPEN`, e le texture sono tre
-fumetti con il tasto ✕ e la codina in giù. È il cartello che galleggia sopra la
-testa, non la finestra del dialogo.
+The dialogue box was the last piece we drew ourselves, and the TODO placed it
+in `data/Balloon`. It is not there. `balloon_eng.ps3.dsb` is three quads of
+**1.6 × 0.6 world units** — 1.6 is a cell, that is, a character's height —
+with three materials `CHECK`, `TALK`, `OPEN`, and its textures are three
+speech bubbles with the ✕ button and the tail pointing down. It is the sign
+that floats above a head, not the dialogue window.
 
-Il riquadro sta in **`UserInterface/Message`**, ed è fatto come tutte le
-finestre di questo gioco: `Message_a/b/c` (505 × 138) e `MessageBig_a/b/c`
-(686 × 154), `a` e `c` righe sottili con la scala X a zero, il corpo `b` con la
-scala Y a zero. Con loro c'è `Advance_Cursor`, la freccia del «premi per
-continuare».
+The box is in **`UserInterface/Message`**, and it is built like every window
+in this game: `Message_a/b/c` (505 × 138) and `MessageBig_a/b/c` (686 × 154),
+`a` and `c` thin lines with scale X at zero, the body `b` with scale Y at
+zero. With them is `Advance_Cursor`, the "press to continue" arrow.
 
-Il descrittore mette tutto il resto e non lascia niente da inventare:
+The descriptor supplies everything else and leaves nothing to invent:
 
 ```lua
-Line=3,  X=421.0, Y=485.0, Space=8.0,   -- riquadro piccolo
+Line=3,  X=421.0, Y=485.0, Space=8.0,   -- small box
          LargeX=325.0, LargeY=465.0, LargeSpace=4.0,
-Speed={0.25, 0.225, ... 0.025},          -- dieci velocità di battitura
+Speed={0.25, 0.225, ... 0.025},          -- ten typing speeds
 Color={White={...}, Blue={...}},
 ```
 
-E i numeri si incastrano, il che è la verifica: il font a scala 1 misura **32
-px** per riga, quindi `485 + 3×32 + 2×8 = 597` e il corpo del riquadro finisce a
-**598**. Un pixel di margine — da cui si legge anche che `Space` è l'interlinea
-**fra** le righe e non su ognuna: sommandola pure all'ultima si sfora di sette
-pixel. E che il font a scala 1 sia già la misura giusta conferma per una via in
-più che lo schermo virtuale è uno solo.
+The numbers fit together, and that is the check. At scale 1 the font measures
+**32 px** per line, so `485 + 3×32 + 2×8 = 597`, and the body of the box ends
+at **598**. One pixel of margin — which also shows that `Space` is the spacing
+**between** lines and not on each one: adding it to the last line as well
+overshoots by seven pixels. And that the font at scale 1 is already the right
+size confirms by one more route that there is one virtual screen.
 
-`ui.widget()` ritaglia un singolo pezzo da una scena — serve perché la misura
-grande *contiene* la piccola, quindi non si separano ritagliando un rettangolo:
-si filtra per nome di nodo.
+`ui.widget()` cuts a single piece out of a scene. It is needed because the
+large size *contains* the small one, so they cannot be separated by cutting a
+rectangle: they are filtered by node name.
 
-## La mappa del sotterraneo, e la tinta che il compositore ignorava
+## The dungeon map, and the tint the compositor ignored
 
-Le venti mappe dei sotterranei erano nell'elenco di «cosa manca» come
-*schermate con contenuto dinamico, che hanno bisogno di dati di partita che
-ancora non esistono*. I dati adesso ci sono: la griglia dichiara a quale
-**stanza** appartiene ogni cella (vedi [`walk.md`](walk.md)), e la scena ha un
-pezzo per stanza e per stato.
+The twenty dungeon maps were on the "what is missing" list as *screens with
+dynamic content, which need game data that does not exist yet*. The data now
+exists: the grid declares which **room** each cell belongs to (see
+[`walk.md`](walk.md)), and the scene has one piece per room and per state.
 
 ```
 python tools/ui.py map 1 1 out.png --seen 1,2,3,4,5,6 --here 4
 ```
 
-Il descrittore chiude il cerchio da solo, perché le sue porte **nominano i
-campi** che nella griglia sono cifre mute:
+The descriptor closes the circle by itself, because its doors **name the
+fields** that in the grid are mute digits:
 
 ```lua
 -- 普通扉[Door_marker_01]：対応する部屋[room_on_02⇔room_on_06]
@@ -225,280 +225,283 @@ room1=GameDataMapFlags.DUNGEON1_1_2,  room2=GameDataMapFlags.DUNGEON1_1_6,
 groupId=12,  objectId=201,
 ```
 
-`groupId` e `objectId` sono il `-g` e il `-o` della cella, e `groupId=12` sta
-per il piano 1, stanza 2 — cioè lo stesso `(piano)(stanza)` misurato sulla
-griglia, detto per esteso da un terzo file.
+`groupId` and `objectId` are the cell's `-g` and `-o`, and `groupId=12` stands
+for floor 1, room 2 — the same `(floor)(room)` measured on the grid, spelled
+out by a third file.
 
-### I tre stati sono un colore, non tre disegni
+### The three states are a colour, not three drawings
 
-Comporre la mappa non cambiava niente: le stanze uscivano identiche in tutti e
-tre gli stati. Non era il filtro — `room_on_02`, `room_off_02` e
-`room_still_02` sono la **stessa mesh**, nella stessa posizione, con le
-**stesse UV**, sulla stessa texture. A distinguerli è il `diffuse` del
-materiale:
+Composing the map changed nothing: the rooms came out identical in all three
+states. It was not the filter — `room_on_02`, `room_off_02` and
+`room_still_02` are the **same mesh**, in the same position, with the **same
+UVs**, on the same texture. What tells them apart is the material's
+`diffuse`:
 
-| stato | diffuse |
+| state | diffuse |
 |---|---:|
-| `room_on` | 1,0 |
-| `room_off` | 0,5 |
-| `room_still` | 0,0 |
+| `room_on` | 1.0 |
+| `room_off` | 0.5 |
+| `room_still` | 0.0 |
 
-Una scala, e la scala li ordina: il più scuro è la stanza che non si è ancora
-vista, perché 0,0 su una mappa vuol dire una stanza che non si vede. I nomi non
-lo dicono e questa corrispondenza resta nostra, ma non è un'ipotesi al buio.
+A scale, and the scale orders them: the darkest is the room not yet seen,
+because 0.0 on a map means a room you cannot see. The names do not say so and
+this correspondence remains ours, but it is not a hypothesis in the dark.
 
-*Il difetto però era generale, non della mappa: il compositore guardava la sola
-texture e buttava via il colore del materiale, su **ogni** schermata. Ora lo
-moltiplica — l'alfa no, perché a spegnere un pezzo qui è il colore.*
+*The defect, though, was general, not the map's: the compositor looked only at
+the texture and threw away the material's colour, on **every** screen. Now it
+multiplies it in — not the alpha, because what switches a piece off here is
+the colour.*
 
-E il difetto era grosso, perché la tinta è il modo in cui questa interfaccia
-dichiara gli stati:
+And the defect was large, because tint is how this interface declares states:
 
 ```
-115 scene di interfaccia, 49 con almeno un nodo tinto, 1.869 nodi in tutto
-   891 a 0,0     spenti del tutto
-   864 a 0,5     a metà
-    70 a 0,13, 42 a 0,59, e un solo nodo colorato davvero (0,0 0,24 0,5)
+115 interface scenes, 49 with at least one tinted node, 1,869 nodes in all
+   891 at 0.0     fully off
+   864 at 0.5     half
+    70 at 0.13, 42 at 0.59, and a single truly coloured node (0.0 0.24 0.5)
 ```
 
-Ottocentonovantuno pezzi che devono essere neri venivano disegnati a piena
-luce. È la stessa forma della scoperta di sessione 6 — *un dato che sembra
-vuoto può essere solo chiuso* — ma per l'altro verso: qui un pezzo che sembra
-acceso può essere solo **spento**, e a spegnerlo non è la geometria né l'alfa,
-è un numero nel materiale.
+Eight hundred and ninety-one pieces that should be black were being drawn at
+full light. It is the same shape as session 6's finding — *data that looks
+empty may only be closed* — the other way round: here a piece that looks lit
+may only be **switched off**, and what switches it off is neither the
+geometry nor the alpha but a number in the material.
 
-## L'input era dichiarato quasi tutto
+## The input was almost all declared
 
-Era in «cosa manca» come *«`Cancel = {Enable, Index}` dice quale voce sceglie
-il tasto di annullamento, quindi anche il comportamento è dichiarato: manca chi
-lo esegue»*. Cercando chi lo esegue si è visto che il descrittore dichiara
-molto più di quella riga, e che l'unica cosa da scegliere è una.
+It was on "what is missing" as *"`Cancel = {Enable, Index}` says which item the
+cancel button chooses, so the behaviour is declared too: what is missing is
+whatever runs it"*. Looking for whatever runs it showed that the descriptor
+declares much more than that line, and that only one thing is left to choose.
 
-### Una voce è una voce se il cursore ci può stare
+### An item is an item if the cursor can rest on it
 
-Il blocco `Select` erano diciannove sì/no, e sembrava tutto. Il criterio giusto
-non è il **nome** del blocco ma `CursorX`/`CursorY`: cercando così si trovano
-**23 blocchi per 60 voci**, e i nomi sono tre.
+The `Select` block was nineteen yes/no pairs, and it looked like all there
+was. The right criterion is not the block's **name** but
+`CursorX`/`CursorY`: searching that way finds **23 blocks with 60 items**,
+under three names.
 
 ```
 python tools/ui.py menus Title
 
-Title.ClearMenu: 6 voci, annullare non e ammesso
-   1. NEW GAME      cursore (534,377)   Start a new adventure.
-   2. NEW GAME+     cursore (534,407)   Begin from your cleared data.
+Title.ClearMenu: 6 items, cancelling is not allowed
+   1. NEW GAME      cursor (534,377)   Start a new adventure.
+   2. NEW GAME+     cursor (534,407)   Begin from your cleared data.
    ...
-Title.Menu: 5 voci
-   1. NEW GAME      cursore (534,407)   Start a new adventure.
+Title.Menu: 5 items
+   1. NEW GAME      cursor (534,407)   Start a new adventure.
 ```
 
-`Menu` è il menu del titolo e quello di pausa — *RESUME, SAVE, LOAD, OPTIONS,
-SNAPSHOT, ALBUM, BESTIARY, LOADING ART, TITLE* — e `ClearMenu` è il titolo **a
-gioco finito**, con `NEW GAME+` in più. Le due liste condividono le posizioni
-da 407 in giù: la voce nuova non si aggiunge in fondo, il menu **cresce verso
-l'alto**.
+`Menu` is the title menu and the pause menu — *RESUME, SAVE, LOAD, OPTIONS,
+SNAPSHOT, ALBUM, BESTIARY, LOADING ART, TITLE* — and `ClearMenu` is the title
+**once the game is finished**, with `NEW GAME+` added. The two lists share
+the positions from 407 down: the new item is not appended at the bottom, the
+menu **grows upwards**.
 
-Ogni voce porta anche la propria frase di spiegazione, ed è l'unico pezzo di
-interfaccia che cambia al muoversi del cursore.
+Each item also carries its own line of explanation, and that is the only
+piece of interface that changes as the cursor moves.
 
-### L'asse non è una scelta, e nemmeno il passo
+### The axis is not a choice, and neither is the step
 
-Le voci sono incolonnate in **23 blocchi su 23**, zero in riga: si sale e si
-scende. Il cursore sta 34 px a sinistra della scritta e 7 in su, sempre gli
-stessi, e fra due voci il passo è **32 px** — che è la riga di font con cui in
-sessione 7 il riquadro di dialogo tornava a 597 contro un corpo che finisce a
-598. Lo stesso numero, da un terzo posto.
+The items are stacked in a column in **23 blocks of 23**, none in a row: you
+go up and down. The cursor sits 34 px left of the text and 7 px up, always the
+same, and the step between two items is **32 px** — the font line with which,
+in session 7, the dialogue box came to 597 against a body that ends at 598.
+The same number, from a third place.
 
-### Annullare non vuol dire uscire
+### Cancelling does not mean leaving
 
-`Cancel = {Enable, Index}`, e **l'indice si conta da zero**. Lo dice il
-contenuto: tutte e 19 le schermate hanno le stesse due voci `YES`/`NO` e tutte
-e 19 dichiarano `Index=1`. Contando da uno, annullare vorrebbe dire acconsentire
-in tutte e 19; contando da zero è `NO` in tutte e 19. È la stessa base di
-`Start`, che vale 0 per la clip `In`.
+`Cancel = {Enable, Index}`, and **the index counts from zero**. The content
+says so: all 19 screens have the same two items `YES`/`NO` and all 19 declare
+`Index=1`. Counting from one, cancelling would mean agreeing on all 19;
+counting from zero it is `NO` on all 19. It is the same base as `Start`,
+which is 0 for the `In` clip.
 
-Quindi il tasto ○ non chiude la finestra: **sceglie una voce precisa**. E dove
-`Enable=0` non fa niente — sono `ClearSave`, `DeleteSaveDataSelect`,
-`GameOverSaveSelect` e `GameOverResurrectSelect`, cioè le quattro schermate in
-cui il gioco pretende una risposta invece di lasciar uscire.
+So the ○ button does not close the window: **it chooses a specific item**.
+And where `Enable=0` it does nothing — on `ClearSave`,
+`DeleteSaveDataSelect`, `GameOverSaveSelect` and `GameOverResurrectSelect`,
+the four screens where the game demands an answer instead of letting you out.
 
 ```
 python tools/ui.py drive Continue cerchio out.png
-  cerchio  voce 2/2 'NO'  -> scelto 'NO'  (annullando)
+  cerchio  item 2/2 'NO'  -> chose 'NO'  (cancelling)
 
 python tools/ui.py drive ClearSave cerchio out.png
-  cerchio  voce 1/2 'YES'          il tasto non fa niente
+  cerchio  item 1/2 'YES'          the button does nothing
 ```
 
-Due finestre identiche a vedersi, che si comportano in modo diverso perché il
-disco lo dichiara.
+Two windows that look identical, and behave differently because the disc
+declares it.
 
-### La barra dei tasti dichiara quali azioni ci sono
+### The button bar declares which actions exist
 
-In fondo a ogni schermata c'è una striscia continua che alterna piastre e
-icone: nell'album dei nemici i sette rettangoli vanno da 673 a 1176 senza un
-buco. Le scritte stanno nel descrittore, le icone nella scena sotto un nodo
-`KeyAssign`, e si accoppiano perché ogni scritta comincia **7-8 px dopo** la
-fine di un'icona.
+At the bottom of every screen there is a continuous strip that alternates
+plates and icons: in the enemy album the seven rectangles run from 673 to 1176
+without a gap. The text is in the descriptor, the icons in the scene under a
+`KeyAssign` node, and they pair up because each label starts **7-8 px after**
+the end of an icon.
 
 ```
 python tools/ui.py keys EnemyAlbum
 
-  pageStrings     PAGE     x=  681   senza icona
-  moveStrings     MOVE     x=  812   tasto grigio
-  detailsStrings  INFO     x=  937   tasto croce
-  canselStrings   CANCEL   x= 1054   tasto cerchio
+  pageStrings     PAGE     x=  681   no icon
+  moveStrings     MOVE     x=  812   grey button
+  detailsStrings  INFO     x=  937   cross button
+  canselStrings   CANCEL   x= 1054   circle button
 ```
 
-A nominare il tasto è **il colore**, che su questo hardware è il tasto: la ✕ è
-disegnata blu e la ○ rossa, sulle texture del disco. Il grigio invece non
-separa niente — croce direzionale e dorsali `L1`/`R1` sono senza tinta — e
-resta un nome solo.
+What names the button is **the colour**, which on this hardware is the
+button: the ✕ is drawn blue and the ○ red, on the disc's textures. Grey, on
+the other hand, separates nothing — the directional pad and the `L1`/`R1`
+shoulders are untinted — and stays a single name.
 
-`PAGE` non ha icona perché è la prima della striscia: a sfogliare sono le due
-frecce ai lati della pagina, `Left_Cursor` e `Right_Cursor`, che nella scena
-sono nodi per conto loro.
+`PAGE` has no icon because it is the first in the strip: what turns pages are
+the two arrows at the sides of the page, `Left_Cursor` and `Right_Cursor`,
+which are nodes of their own in the scene.
 
-Dove la schermata **scorre** l'accoppiamento non si può fare, e non è un
-difetto: la striscia è parcheggiata fuori campo con il resto della scena mentre
-le scritte sono già al proprio posto. Sono le stesse 5 schermate di sempre.
+Where the screen **slides**, the pairing cannot be made, and that is not a
+defect: the strip is parked off screen with the rest of the scene while the
+labels are already in place. These are the same 5 screens as ever.
 
-### Il cursore non era nostro, e il suo posto misura il testo
+### The cursor was not ours, and its position measures the text
 
-Era l'ultimo pezzo che ci mettevamo noi — un triangolo disegnato a mano — e non
-ce n'era bisogno: le scene lo portano, in due modi diversi.
+It was the last piece we supplied ourselves — a hand-drawn triangle — and
+there was no need: the scenes carry it, in two different ways.
 
-- **Parcheggiato all'origine**, come tutto ciò che il descrittore colloca: un
-  `Cursor_01` di 16–17 px per lato a `(0, 0)`. Così fanno 7 blocchi su 8, e va
-  messo dove dice `CursorX`/`CursorY`.
-- **Uno per riga, già collocato**: il menu di pausa ha nove marcatori alti 31
-  px, alle posizioni che il descrittore dichiara voce per voce — 530 contro
-  529, 86 contro 84. Lì il cursore non si sposta: se ne accende uno, e gli
-  altri otto vanno spenti. È la stessa forma della mappa del sotterraneo, dove
-  la scena porta tutti gli stati e il dato dice quale.
+- **Parked at the origin**, like everything the descriptor places: a
+  `Cursor_01` of 16–17 px a side at `(0, 0)`. 7 blocks of 8 do it this way,
+  and it goes where `CursorX`/`CursorY` say.
+- **One per line, already placed**: the pause menu has nine markers 31 px
+  tall, at the positions the descriptor declares item by item — 530 against
+  529, 86 against 84. There the cursor does not move: one is switched on and
+  the other eight are switched off. It is the same shape as the dungeon map,
+  where the scene carries every state and the data says which.
 
-Ed è il cursore a dare l'oracolo su **come si dispone il testo**, che erano due
-numeri tarati a occhio. La cella del font è 32×32, e il descrittore mette il
-cursore 7 px più in giù della scritta: alto 16 px dentro una riga di 32, cade
-esattamente in mezzo. Quindi `Y` è il **bordo alto** della riga e non il suo
-centro, e la scala è **1** e non 1,4.
+And the cursor is the oracle for **how the text is laid out**, which had been
+two numbers calibrated by eye. The font cell is 32×32, and the descriptor puts
+the cursor 7 px below the text: 16 px tall inside a 32 px line, it falls
+exactly in the middle. So `Y` is the **top edge** of the line and not its
+centre, and the scale is **1** and not 1.4.
 
 ```
-il cursore cade in mezzo alla riga a meno di 6 px, su 30 voci
+the cursor falls in the middle of the line within 6 px, over 30 items
 ```
 
-Combacia con l'altro conto, quello del riquadro di dialogo di sessione 7:
-`485 + 3×32 + 2×8 = 597` contro un corpo che finisce a 598. La stessa altezza di
-riga, presa per due strade che non si conoscono.
+It agrees with the other count, session 7's dialogue box:
+`485 + 3×32 + 2×8 = 597` against a body that ends at 598. The same line
+height, taken by two routes that know nothing of each other.
 
-### Il seguito di una schermata è dichiarato due volte su 136
+### What follows a screen is declared twice in 136
 
-Cercando il legame fra una schermata e la successiva — che sembrava non
-esistere — si trova, ma raro: due schermate lo scrivono, per tre legami, e
-sempre nella stessa forma, un campo in fondo alla tabella con la chiave uguale
-al valore.
+Looking for the link between a screen and the next — which seemed not to
+exist — it turns up, but rarely: two screens write it, for three links, always
+in the same form, a field at the end of the table whose key equals its value.
 
 ```lua
 Pause = { ... , PauseTitleSelect = "PauseTitleSelect" };
 ```
 
-Sono `Pause` che apre `PauseTitleSelect`, e `GameOver` che apre
-`GameOverSaveSelect` e `GameOverResurrectSelect`: tutte e tre la **finestra di
-conferma** di una scelta che non si torna indietro. Dove il seguito è una
-domanda il disco lo dice; dove è un'altra schermata no.
+They are `Pause` opening `PauseTitleSelect`, and `GameOver` opening
+`GameOverSaveSelect` and `GameOverResurrectSelect`: all three the
+**confirmation window** for a choice there is no going back on. Where what
+follows is a question, the disc says so; where it is another screen, it does
+not.
 
-### Una sola cosa è nostra
+### Only one thing is ours
 
-Che dall'ultima voce si torni alla prima. Con nove voci in pausa serve, ma il
-disco non lo dichiara, quindi è una scelta e si spegne: `Screen(..., wrap=False)`.
+That from the last item you wrap to the first. With nine items in pause it is
+needed, but the disc does not declare it, so it is a choice and it can be
+switched off: `Screen(..., wrap=False)`.
 
-## La pagina è il piano, con il segno
+## The page is the floor, with its sign
 
-`setting = {pageMin, pageMax}` sta sui sette `dungeonMapNN_01` e dichiara
-l'intervallo di ciò che si sfoglia. Sulle mappe dei sotterranei quel numero è
-il **piano**, e il segno dice se si è sopra o sotto: `B1` è −1, `1F` è 0, `2F`
-è +1.
+`setting = {pageMin, pageMax}` sits on the seven `dungeonMapNN_01` and
+declares the range of what is paged through. On the dungeon maps that number
+is the **floor**, and the sign says whether it is above or below: `B1` is −1,
+`1F` is 0, `2F` is +1.
 
-Due conti indipendenti la mettono alla prova:
+Two independent counts put it to the test:
 
 ```
-pageMax - pageMin + 1  =  numero di descrittori di piano       7 sotterranei su 7
-le etichette stampate (B2, 5F) cadono dentro il proprio intervallo   19 su 19
+pageMax - pageMin + 1  =  number of floor descriptors          7 dungeons of 7
+the printed labels (B2, 5F) fall inside their own range          19 of 19
 ```
 
-I due che restano fuori sono i sotterranei a **un piano solo**, che dichiarano
-`0..0` e `1..1` pur essendo tutti e due `B1`: dove non c'è niente da sfogliare
-il campo non è mantenuto.
+The two left out are the **single-floor** dungeons, which declare `0..0` and
+`1..1` though both are `B1`: where there is nothing to page through, the
+field is not maintained.
 
-E la successione dei file non è quella dei piani — il sotterraneo 5 li tiene
-nell'ordine `1F`, `2F`, `B1` — quindi il piano di un descrittore va letto, non
-contato. Il primo però **non dichiara il proprio**: elenca le etichette di
-tutti i piani, perché disegna il selettore a lato. Il suo si ricava per
-differenza, ed è quello che gli altri non hanno preso.
+And the order of the files is not the order of the floors — dungeon 5 keeps
+them as `1F`, `2F`, `B1` — so a descriptor's floor has to be read, not
+counted. The first one, though, **does not declare its own**: it lists the
+labels of every floor, because it draws the selector at the side. Its own
+floor is found by elimination: it is the one the others have not taken.
 
 ```
 python tools/ui.py floors 5
 
-  pagina  -1  B1   dungeonMap05_03
-  pagina   0  1F   dungeonMap05_01
-  pagina   1  2F   dungeonMap05_02
+  page  -1  B1   dungeonMap05_03
+  page   0  1F   dungeonMap05_01
+  page   1  2F   dungeonMap05_02
 ```
 
-Tutti e 21 i piani dei sette sotterranei hanno così il proprio nome, e nel giro
-di gioco `M` apre la mappa e le frecce **sfogliano i piani** invece di
-camminare.
+All 21 floors of the seven dungeons get their name this way, and in the game
+loop `M` opens the map and the arrows **page through the floors** instead of
+walking.
 
-## Il testo c'era, e non si vedeva
+## The text was there, and could not be seen
 
-Tre difetti nostri, uno dentro l'altro, e il terzo si è visto solo togliendo i
-primi due.
+Three defects of ours, one inside the other, and the third only showed once
+the first two were gone.
 
-**Le tabelle permissive servivano anche qui.** `descriptors()` non caricava
-`host.BOOT`, quindi 11 file cadevano in silenzio su una costante nativa
-(`GameDataMapFlags`, `map_manager`): **17 schermate** in meno, fra cui l'album
-dei nemici, `Equip` e tutte e sette le mappe dei sotterranei. Sono **136**, non
-119. La stessa soluzione era già scritta in `descriptor_file()` da una
-sessione.
+**The permissive tables were needed here too.** `descriptors()` did not load
+`host.BOOT`, so 11 files fell silently on a native constant
+(`GameDataMapFlags`, `map_manager`): **17 screens** fewer, among them the
+enemy album, `Equip` and all seven dungeon maps. There are **136**, not 119.
+The same fix had already been in `descriptor_file()` for a session.
 
-**I file sono UTF-8 nei dati e Shift-JIS nei commenti.** Gli autori hanno
-lasciato le proprie note nella codifica di casa: 21 file su 618, e il byte
-guasto sta sempre subito dopo un `--`. Il ripiego di prima — *«se UTF-8 non va,
-rileggi tutto in Shift-JIS»* — buttava via l'intero file per colpa di una nota,
-e fra quei 21 c'è `all.lua.eu`, che da solo dichiara quasi tutte le schermate.
-Le scritte tornavano indietro stroppiate: **319 su 358**. Il commento Lua lo
-ignora fino a fine riga, quindi sostituire il byte non costa niente.
+**The files are UTF-8 in the data and Shift-JIS in the comments.** The authors
+left their notes in their home encoding: 21 files of 618, and the bad byte
+always comes right after a `--`. The old fallback — *"if UTF-8 fails, reread
+everything as Shift-JIS"* — threw away the whole file because of one note,
+and among those 21 is `all.lua.eu`, which by itself declares nearly every
+screen. The text came back mangled: **319 of 358**. A Lua comment is ignored
+up to the end of the line, so replacing the byte costs nothing.
 
-**E allora si è visto quante scritte il disco colloca.** Sono **432**, e se ne
-disegnavano **85**: si guardava dentro `Message` e `Select` e basta, mentre il
-testo sta anche nella barra dei tasti, nei nomi di posto e di piano, nei
-cartigli (`TitleText`, `Font`, `fontStrings`) e nelle voci dei menu. Una
-scritta si riconosce dal fatto che ha un testo **e** un posto: i 61 blocchi
-senza `X`/`Y` sono elenchi di dati (`ItemList`, `LivingList`), cioè nomi che
-un'altra parte della schermata andrà a pescare.
+**And then it showed how much text the disc places.** It is **432** strings,
+and **85** were being drawn: only `Message` and `Select` were looked at,
+while text also sits in the button bar, in place and floor names, in the
+captions (`TitleText`, `Font`, `fontStrings`) and in the menu items. A string
+is recognised by having a text **and** a position: the 61 blocks without
+`X`/`Y` are data lists (`ItemList`, `LivingList`), names that another part of
+the screen will pick up.
 
-Da cui la mappa del sotterraneo, che prima era muta, ora dice «Dark Tower» e
-«3F» — che è esattamente quello che una mappa deve dire.
+So the dungeon map, which used to be mute, now says "Dark Tower" and "3F" —
+which is exactly what a map has to say.
 
-*Una schermata può dichiarare più scritte **nello stesso punto**: sono
-alternative fra cui il motore sceglie — l'album ne ha tre a (594,64), il conto,
-«completo?» e «completo!». Qui si mette la prima invece di sovrapporle.*
+*A screen can declare several strings **at the same point**: they are
+alternatives the engine chooses between — the album has three at (594,64),
+the count, "complete?" and "complete!". Here the first is drawn instead of
+stacking them.*
 
-*E può dichiarare interi blocchi alternativi: il titolo ha `Menu` e `ClearMenu`,
-che sono lo stesso menu prima e dopo aver finito il gioco, e si disegna quello
-che comanda. Quello che resta scoperto è che una schermata ha anche **stati**
-alternativi non dichiarati come tali — sul titolo «PRESS START BUTTON» convive
-con le voci del menu, e a distinguerli non è la posizione ma il momento. Chi
-sappia quale stato è attivo non lo abbiamo ancora trovato.*
+*And it can declare whole alternative blocks: the title has `Menu` and
+`ClearMenu`, the same menu before and after finishing the game, and the one in
+charge is drawn. What is still uncovered is that a screen also has
+alternative **states** not declared as such — on the title "PRESS START
+BUTTON" coexists with the menu items, and what tells them apart is not the
+position but the moment. Whatever knows which state is active, we have not
+found yet.*
 
-## Cosa manca
+## What is missing
 
-- **Dove atterrano i 15 pezzi che scorrono**, in 5 schermate. Vedi sopra: è
-  l'unico estremo che il disco non dichiara.
-- **La curva** delle clip: qui è lineare per non inventare nulla.
-- **Cosa fa una voce scelta**: `Screen` dice *quale* voce si è scelta, non cosa
-  succede dopo. Il legame fra schermate è dichiarato due volte su 136 (vedi
-  sopra), quindi per le altre 134 va cercato altrove prima di inventarlo — e
-  l'unico posto rimasto è l'EBOOT.
-- **L'avvolgimento** del cursore: l'unica cosa qui dentro che è una scelta.
-- Le schermate con contenuto dinamico (`Item`, `Status`) hanno bisogno di dati
-  di partita che ancora non esistono. *(I `dungeonMapXX` non sono più fra
-  queste: la griglia dà le stanze e il descrittore i piani.)*
+- **Where the 15 sliding pieces land**, on 5 screens. See above: it is the
+  one end the disc does not declare.
+- **The curve** of the clips: here it is linear, so as to invent nothing.
+- **What a chosen item does**: `Screen` says *which* item was chosen, not what
+  happens next. The link between screens is declared twice in 136 (see
+  above), so for the other 134 it has to be looked for elsewhere before it is
+  invented — and the only place left is the EBOOT.
+- **The wrap-around** of the cursor: the only thing in here that is a choice.
+- The screens with dynamic content (`Item`, `Status`) need game data that does
+  not exist yet. *(The `dungeonMapXX` are no longer among them: the grid gives
+  the rooms and the descriptor the floors.)*

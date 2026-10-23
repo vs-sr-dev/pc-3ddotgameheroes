@@ -1,113 +1,118 @@
-# L'estrattore — `tools/iso.py`
+# The extractor — `tools/iso.py`
 
-Fase 1a. Serve a rendere `extract/` **riproducibile**: 3,1 GB che finora
-esistevano come stato locale non ricostruibile, e che per la politica BYOA non
-possono stare nel repository. Ora sono una funzione del disco.
+Phase 1a. Its job is to make `extract/` **reproducible**: 3.1 GB that until now
+existed only as local state that could not be rebuilt, and that BYOA policy
+keeps out of the repository. Now they are a function of the disc.
 
 ```
-python tools/iso.py index                 riscrive tools/iso_index.tsv
-python tools/iso.py sets                  cosa e' dichiarato, con i totali
-python tools/iso.py manifest              calcola tools/manifest.tsv (sha256)
-python tools/iso.py extract [set ...]     estrae in extract/
-python tools/iso.py verify [set ...]      confronta extract/ col manifesto
-python tools/iso.py magic '<glob>' [n]    primi byte dei file che corrispondono
+python tools/iso.py index                 rewrites tools/iso_index.tsv
+python tools/iso.py sets                  what is declared, with the totals
+python tools/iso.py manifest              computes tools/manifest.tsv (sha256)
+python tools/iso.py extract [set ...]     extracts into extract/
+python tools/iso.py verify [set ...]      compares extract/ with the manifest
+python tools/iso.py magic '<glob>' [n]    first bytes of the matching files
 ```
 
-Sul disco di riferimento: **2.799 file, 3,3 GB**; il manifesto ne dichiara
-**2.793 per 3,1 GB**, calcolati in 26 secondi.
+On the reference disc: **2,799 files, 3.3 GB**; the manifest declares
+**2,793 of them, 3.1 GB**, computed in 26 seconds.
 
-## UDF, non ISO9660
+## UDF, not ISO9660
 
-Il disco monta entrambi i filesystem e non sono equivalenti: i nomi ISO9660
-sono **troncati a 31 caratteri** e maiuscolizzati, quindi `d_1_1_1.ps3.pac.gz`
-diventa `D_1_1_1_PS3_PAC.GZ`. Non è cosmesi. In questo gioco i nomi sono dati:
-il materiale riferisce la texture *per nome di file*, la cella della griglia è
-codificata nel nome della mesh, e le destinazioni di `MAP_ALIGNMENT` sono nomi
-di mappa. Si estrae via UDF.
+The disc carries both filesystems and they are not equivalent: ISO9660 names
+are **truncated to 31 characters** and upper-cased, so `d_1_1_1.ps3.pac.gz`
+becomes `D_1_1_1_PS3_PAC.GZ`. This is not cosmetic. In this game names are
+data: a material refers to its texture *by file name*, a grid cell is encoded
+in a mesh's name, and the destinations in `MAP_ALIGNMENT` are map names.
+Extraction goes through UDF.
 
-La verifica lo ha mostrato subito: i `.pac.gz` presenti in locale risultavano
-**mancanti**, perché erano stati estratti in passato con 7-Zip e portavano i
-nomi troncati.
+The check showed it straight away: the `.pac.gz` files already on disk came
+out as **missing**, because they had been extracted with 7-Zip at some point
+and carried the truncated names.
 
-### Perché un lettore scritto a mano
+### Why a hand-written reader
 
-`pycdlib` è installato e rifiuta questo disco:
+`pycdlib` is installed and rejects this disc:
 
 ```
 PyCdlibInvalidISO: UDF File Set Tag identifier not 256
 ```
 
-Ha ragione a modo suo. I Blu-ray PS3 usano UDF 2.50 con **partizione di
-metadati**: la seconda mappa di partizione del Logical Volume Descriptor,
-identificata da `*UDF Metadata Partition`. Gli inode non stanno nella
-partizione fisica, ma dentro un *file* di metadati (tipo 250) che la ricopre; le
-estensioni di quel file **sono** i blocchi della partizione logica dove vivono
-il File Set Descriptor e tutte le directory. Chi ignora quel livello di
-indirezione va a leggere dove si aspetta un FSD (tag 256) e ci trova un File
-Entry (tag 261) — esattamente l'errore qui sopra.
+In its way it is right. PS3 Blu-rays use UDF 2.50 with a **metadata
+partition**: the second partition map of the Logical Volume Descriptor,
+identified by `*UDF Metadata Partition`. The inodes do not live in the
+physical partition but inside a metadata *file* (type 250) laid over it; the
+extents of that file **are** the blocks of the logical partition where the
+File Set Descriptor and every directory live. A reader that ignores that level
+of indirection goes looking where it expects an FSD (tag 256) and finds a File
+Entry (tag 261) — exactly the error above.
 
-La catena completa dei descrittori è nel docstring di `tools/iso.py`. Sono circa
-150 righe di Python e tolgono una dipendenza esterna dal punto più basso della
-pila.
+The full chain of descriptors is in the docstring of `tools/iso.py`. It is
+about 150 lines of Python, and it removes an external dependency from the very
+bottom of the stack.
 
-Nota di merito al metodo: il file dichiara sempre dove sta la cosa successiva.
-Non c'è stato niente da indovinare, solo da seguire — la stessa proprietà che
-ha risolto `DSBF`.
+A note in the method's favour: the file always declares where the next thing
+is. There was nothing to guess, only to follow — the same property that solved
+`DSBF`.
 
-## Il manifesto
+## The manifest is the disc's fingerprint
 
-`tools/manifest.tsv` è `path · size · sha256` per ogni file dichiarato: è
-l'**impronta del disco supportato**, non contenuto del gioco, quindi sta nel
-repository (è quello che fanno devilutionX e Ship of Harkinian). Permette tre
-cose che prima non c'erano:
+`tools/manifest.tsv` is `path · size · sha256` for every declared file. It is
+the **fingerprint of the supported disc**, not game content, so it belongs in
+the repository (devilutionX and Ship of Harkinian do the same). It makes three
+things possible that were not before:
 
-- riconoscere che un disco è quello giusto, prima di estrarre;
-- verificare `extract/` senza rileggere la ISO (`verify`, ~30 s con `--deep`);
-- accorgersi di un'estrazione fatta con lo strumento sbagliato.
+- recognising that a disc is the right one, before extracting;
+- checking `extract/` without rereading the ISO (`verify`, ~30 s with
+  `--deep`);
+- noticing an extraction made with the wrong tool.
 
-Il disco di riferimento è **3D Dot Game Heroes (Europe), BLES-00860**.
+The reference disc is **3D Dot Game Heroes (Europe), BLES-00875**: `TITLE_ID`
+in `PS3_GAME/PARAM.SFO`, version 01.01, `APP_VER` 01.00. (Until session 14
+this page and the manifest's header said BLES-00860, which is no id this disc
+carries.)
 
-## I set
+## The sets
 
-`extract` senza argomenti estrae tutto; l'elenco dei set *è* la definizione di
-cosa vuol dire "`extract/` completo".
+`extract` with no arguments extracts everything; the list of sets *is* the
+definition of what "a complete `extract/`" means.
 
-| set | file | byte | contenuto |
+| set | files | bytes | contents |
 |---|---:|---:|---|
-| `script` | 618 | 5,3 MB | i `.lua.eu`, sorgente di gioco |
-| `texture` | 763 | 623,3 MB | TPKG |
-| `model` | 460 | 176,7 MB | DSBF |
-| `map` | 167 | 441,5 MB | `.pac.gz`, + derivato: gunzip in `extract/pac/` |
-| `collision` | 171 | 5,4 MB | DPK |
-| `align` | 170 | 34,0 MB | griglia logica e grafo del mondo |
-| `voxel` | 93 | 5,6 MB | EDT/SAV, editor dei personaggi |
-| `shader` | 4 | 1,2 MB | pacchetti Cg (serve la tabella dei simboli) |
-| `image` | 11 | 1,0 MB | PNG e DDS sciolti |
-| `audio` | 326 | 638,3 MB | WAV |
-| `movie` | 5 | 1,2 GB | Bink |
-| `boot` | 2 | 21,6 MB | `EBOOT.BIN`, `PARAM.SFO` (Fase 3) |
-| `font` | 1 | 1,3 kB | `Font.bin`, metriche del font di interfaccia |
-| `devtool` | 2 | 24,0 kB | eseguibili Windows lasciati sul disco |
+| `script` | 618 | 5.3 MB | the `.lua.eu` files, the game's source |
+| `texture` | 763 | 623.3 MB | TPKG |
+| `model` | 460 | 176.7 MB | DSBF |
+| `map` | 167 | 441.5 MB | `.pac.gz`, + derived: gunzip into `extract/pac/` |
+| `collision` | 171 | 5.4 MB | DPK |
+| `align` | 170 | 34.0 MB | the logical grid and the world graph |
+| `voxel` | 93 | 5.6 MB | EDT/SAV, the character editor |
+| `shader` | 4 | 1.2 MB | Cg packages (the symbol table is what is needed) |
+| `image` | 11 | 1.0 MB | loose PNG and DDS |
+| `audio` | 326 | 638.3 MB | WAV |
+| `movie` | 5 | 1.2 GB | Bink |
+| `boot` | 2 | 21.6 MB | `EBOOT.BIN`, `PARAM.SFO` (Phase 3) |
+| `font` | 1 | 1.3 kB | `Font.bin`, metrics of the interface font |
+| `devtool` | 2 | 24.0 kB | Windows executables left on the disc |
 
-I passi **derivati** fanno parte del manifesto: senza di essi `extract/` non è
-completo. Per ora ce n'è uno solo, la decompressione dei `.pac.gz` in
-`extract/pac/`, perché tutto il resto della catena legge il `.pac` in chiaro.
+**Derived** steps are part of the manifest: without them `extract/` is not
+complete. For now there is only one, decompressing the `.pac.gz` files into
+`extract/pac/`, because the rest of the chain reads the `.pac` in the clear.
 
-Restano fuori apposta: `PS3UPDAT.PUP` (il firmware, 256 MB), `TROPHY.TRP`,
-`LICDIR/LIC.DAT`, `PS3LOGO.DAT`, `PS3_DISC.SFB` — infrastruttura di
-piattaforma — e `IconData/Thumbs.db`, che è una cache di miniature di Windows
-finita sul master per distrazione.
+Left out on purpose: `PS3UPDAT.PUP` (the firmware, 256 MB), `TROPHY.TRP`,
+`LICDIR/LIC.DAT`, `PS3LOGO.DAT`, `PS3_DISC.SFB` — platform infrastructure —
+and `IconData/Thumbs.db`, a Windows thumbnail cache that ended up on the master
+by accident.
 
-## Due ritrovamenti
+## Two finds nobody was looking for
 
-L'inventario dichiarato ha fatto emergere cose che nessuno stava cercando,
-perché prima non esisteva un elenco di *tutto*:
+The declared inventory turned up things nobody was looking for, because until
+then there was no list of *everything*:
 
-- **`data/MakeLuaDump.exe`** (9,5 kB) e **`data/edt/addition/AdditionEditCharMessage.exe`**
-  (14,5 kB): due utility Windows degli sviluppatori, rimaste sul disco stampato.
-  Sono PE x86 minuscoli e, dal nome, uno serve proprio a *scaricare le tabelle
-  Lua* — cioè fa il lavoro di `tools/lua_tables.py`. Vanno guardati: costano
-  poco e possono confermare la semantica.
-- **`Font.bin`** (1,3 kB): troppo piccolo per contenere glifi, quindi sono
-  metriche o una mappa di caratteri, con le texture del font a parte in
-  `UserInterface/Font`. Servirà alla milestone "primo dialogo".
+- **`data/MakeLuaDump.exe`** (9.5 kB) and
+  **`data/edt/addition/AdditionEditCharMessage.exe`** (14.5 kB): two of the
+  developers' Windows utilities, left on the pressed disc. They are tiny x86
+  PEs and, going by the name, one of them exists precisely to *dump the Lua
+  tables* — that is, it does the job of `tools/lua_tables.py`. They are worth a
+  look: they cost little and could confirm the semantics.
+- **`Font.bin`** (1.3 kB): too small to hold glyphs, so it is metrics or a
+  character map, with the font's textures kept separately in
+  `UserInterface/Font`. It will be needed for the "first dialogue" milestone.

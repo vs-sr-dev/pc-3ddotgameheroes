@@ -1,444 +1,450 @@
-# Formato DSBF — scene e modelli
+# The DSBF format — scenes and models
 
-**Stato: container, geometria, grafo di scena e materiali risolti.**
-Header, tabelle e testate dei record sono validati su tutti i 460 file `.dsb`
-del disco — 25.443 oggetti, 39.348 stringhe, zero discrepanze. La geometria si
-estrae da **460 file su 460**: 8.707 mesh, 8.770 chunk, **2.438.577 vertici** e
-**1.611.418 triangoli**. Il grafo di scena si ricompone: genitore, trasformazione
-e geometria collegata di ogni nodo. La catena `node → mesh → material → texture`
-è chiusa, con le texture assegnate ai loro stage. Restano lo skinning e alcuni
-parametri di materiale senza nome.
+**Status: container, geometry, scene graph and materials solved.**
+The header, the tables and the record headers are validated on all 460 `.dsb`
+files on the disc — 25,443 objects, 39,348 strings, zero discrepancies.
+Geometry is extracted from **460 files out of 460**: 8,707 meshes, 8,770
+chunks, **2,438,577 vertices** and **1,611,418 triangles**. The scene graph
+reassembles: the parent, the transform and the attached geometry of every
+node. The chain `node → mesh → material → texture` is closed, with the
+textures assigned to their stages. What remains is skinning and a few
+unnamed material parameters.
 Parser: [`tools/dsb.py`](../tools/dsb.py).
 
-Tutto big-endian.
+Everything is big-endian.
 
-## Il modello del file
+## The file is a memory image
 
-Un header di 16 byte seguito da **un'immagine di memoria** che il motore carica
-di blocco. La conseguenza pratica, e la cosa da sapere prima di ogni altra:
+A 16-byte header followed by **a memory image** that the engine loads in one
+piece. The practical consequence, and the thing to know before anything else:
 
-> **Tutti gli offset interni sono relativi al byte 0x10 del file, non a 0.**
-> Il valore `0x520` indica il byte `0x530`.
+> **Every internal offset is relative to byte 0x10 of the file, not to 0.**
+> The value `0x520` means byte `0x530`.
 
-Il file ha **due regioni**: le *strutture* dall'inizio fino al byte indicato dal
-campo header `0x08`, e da lì in poi i *buffer* di vertici e indici. Gli offset
-dei vertex buffer nei record mesh sono relativi all'inizio della seconda.
+The file has **two regions**: the *structures*, from the start up to the byte
+given by header field `0x08`, and from there on the vertex and index
+*buffers*. The vertex buffer offsets in the mesh records are relative to the
+start of the second.
 
-Due indizi confermano che l'exporter scriveva struct C++ con `memcpy`:
-il riempimento **`0xCC`** (stack non inizializzato di MSVC) che compare sia in
-campi fissi dell'header sia *dentro* le struct, e il padding coerente con
-l'allineamento naturale del compilatore. Il layout su disco rispecchia quindi
-il layout in memoria del motore originale — utile quando si arriverà all'EBOOT.
+Two clues confirm that the exporter wrote C++ structs with `memcpy`: the
+**`0xCC`** fill (MSVC's uninitialised stack), which shows up both in fixed
+header fields and *inside* the structs, and padding consistent with the
+compiler's natural alignment. The on-disc layout therefore mirrors the
+original engine's in-memory layout — useful once the EBOOT is reached.
 
 ## Header
 
-| Off | Tipo | Campo |
+| Off | Type | Field |
 |---|---|---|
 | 0x00 | char[4] | `'DSBF'` |
-| 0x04 | u16 | versione exporter: `0x0195`, `0x019D`, `0x01A4`, `0x01A5` |
-| 0x06 | u16 | `0x0027`, costante |
-| 0x08 | u32 | dimensione della regione delle strutture = **offset dei buffer** |
-| 0x0C | u32 | dimensione del file |
-| 0x10 | u32 | `1`, costante |
-| 0x14 | u32 | `3`, costante |
-| 0x18 | u32 | dimensione della regione dei buffer; `0x08 + 0x18 == filesize` |
-| 0x1C | u32 | offset della tabella degli offset di stringa |
-| 0x20 | u32 | numero di stringhe |
-| 0x24 | u32 | `112`, costante |
-| 0x28 | u32 | numero di oggetti |
-| 0x2C | u32 | `0xFFFFFFFF`, costante |
+| 0x04 | u16 | exporter version: `0x0195`, `0x019D`, `0x01A4`, `0x01A5` |
+| 0x06 | u16 | `0x0027`, constant |
+| 0x08 | u32 | size of the structure region = **offset of the buffers** |
+| 0x0C | u32 | file size |
+| 0x10 | u32 | `1`, constant |
+| 0x14 | u32 | `3`, constant |
+| 0x18 | u32 | size of the buffer region; `0x08 + 0x18 == filesize` |
+| 0x1C | u32 | offset of the table of string offsets |
+| 0x20 | u32 | number of strings |
+| 0x24 | u32 | `112`, constant |
+| 0x28 | u32 | number of objects |
+| 0x2C | u32 | `0xFFFFFFFF`, constant |
 | 0x30 | u32[2] | zero |
-| 0x38 | u32 | offset della lista di binding, vedi §binding |
+| 0x38 | u32 | offset of the binding list, see *Constant binding* |
 | 0x3C | u32 | `0xCCCCCCCC` |
-| 0x40 | float[4]×2 | **bounding box** della scena: min e max |
-| 0x60 | float[4] | colore RGBA (ambiente) |
-| 0x70 | float[4] | parametri di proiezione (near/far osservati: 1.0, 100.0, 0.001) |
-| 0x80 | u32[] | **tabella degli offset degli oggetti**, `0x28` elementi |
+| 0x40 | float[4]×2 | scene **bounding box**: min and max |
+| 0x60 | float[4] | RGBA colour (ambient) |
+| 0x70 | float[4] | projection parameters (near/far observed: 1.0, 100.0, 0.001) |
+| 0x80 | u32[] | **table of object offsets**, `0x28` entries |
 
-Le versioni exporter sul disco: `0x01A5` (386 file), `0x01A4` (43),
+The exporter versions on the disc: `0x01A5` (386 files), `0x01A4` (43),
 `0x019D` (24), `0x0195` (7).
 
-## Tabella stringhe
+## String table
 
-All'offset `0x1C` c'è un array di `0x20` u32, ciascuno l'offset di una stringa
-NUL-terminated. Le stringhe seguono, consecutive.
+At offset `0x1C` there is an array of `0x20` u32s, each the offset of a
+NUL-terminated string. The strings follow, consecutively.
 
-Gli oggetti si referenziano fra loro in due modi diversi, e conviene non
-confonderli: per **CRC32 del nome** (l'IEEE standard, esattamente `zlib.crc32`)
-nelle liste di binding, e per **indice nella tabella degli oggetti** nel grafo
-di scena.
+Objects refer to each other in two different ways, and it pays not to confuse
+them: by **CRC32 of the name** (the standard IEEE one, exactly `zlib.crc32`)
+in the binding lists, and by **index into the object table** in the scene
+graph.
 
-Il suffisso del nome codifica la classe: `-node`, `-mesh`, `-fx`, `-skin`,
-`-light`, `-camera`, oppure l'estensione `.dds` per le texture.
+The name's suffix encodes the class: `-node`, `-mesh`, `-fx`, `-skin`,
+`-light`, `-camera`, or the `.dds` extension for textures.
 
-## Record oggetto — testata di 16 byte
+## Object record — a 16-byte header
 
-| Off | Tipo | Campo |
+| Off | Type | Field |
 |---|---|---|
-| +0x00 | u32 | indice **1-based** del proprio nome nella tabella stringhe |
-| +0x04 | u32 | CRC32 del proprio nome |
-| +0x08 | u32 | indice 1-based del **nome base** (nome senza suffisso di classe), `0` se assente |
-| +0x0C | u32 | **codice di tipo** |
+| +0x00 | u32 | **1-based** index of its own name in the string table |
+| +0x04 | u32 | CRC32 of its own name |
+| +0x08 | u32 | 1-based index of the **base name** (the name without its class suffix), `0` if absent |
+| +0x0C | u32 | **type code** |
 
-Il campo +0x00 è stato verificato su **25.443 oggetti su 25.443**: coincide
-sempre con l'indice del nome il cui CRC32 sta a +0x04. Nome e hash sono
-ridondanti di proposito, per permettere il lookup in entrambi i sensi.
+Field +0x00 was checked on **25,443 objects out of 25,443**: it always matches
+the index of the name whose CRC32 is at +0x04. Name and hash are redundant on
+purpose, so that lookup works in both directions.
 
-Il campo +0x08 punta al nome base: `'CHECK-fx'` → `'CHECK'`,
-`'c_etc_03a_eng.dds'` → `'c_etc_03a_eng_dds'` (il punto diventa underscore).
-Corrispondenza esatta nel 92,7% dei casi; il resto sono sanitizzazioni dello
-stesso tipo (`'Camera01.Target-node'` → `'Camera01_Target'`).
+Field +0x08 points at the base name: `'CHECK-fx'` → `'CHECK'`,
+`'c_etc_03a_eng.dds'` → `'c_etc_03a_eng_dds'` (the dot becomes an
+underscore). It is an exact match in 92.7% of cases; the rest are
+sanitisations of the same kind (`'Camera01.Target-node'` →
+`'Camera01_Target'`).
 
-### Codici di tipo
+### Type codes
 
-| Codice | Tipo | Oggetti | % |
+| Code | Type | Objects | % |
 |---:|---|---:|---:|
-| 17 | node | 11.671 | 45,9% |
-| 14 | mesh | 8.707 | 34,2% |
-| 4 | effect (`-fx`) | 1.792 | 7,0% |
-| 2 | material | 1.792 | 7,0% |
-| 1 | texture | 992 | 3,9% |
-| 9 | light | 400 | 1,6% |
-| 16 | skin | 77 | 0,3% |
-| 11 | camera | 12 | 0,0% |
+| 17 | node | 11,671 | 45.9% |
+| 14 | mesh | 8,707 | 34.2% |
+| 4 | effect (`-fx`) | 1,792 | 7.0% |
+| 2 | material | 1,792 | 7.0% |
+| 1 | texture | 992 | 3.9% |
+| 9 | light | 400 | 1.6% |
+| 16 | skin | 77 | 0.3% |
+| 11 | camera | 12 | 0.0% |
 
-`effect` e `material` compaiono in numero **identico**: ogni materiale ha
-esattamente un effetto associato.
+`effect` and `material` occur in **identical** numbers: every material has
+exactly one associated effect.
 
-## Record `mesh` (tipo 14)
+## `mesh` record (type 14)
 
-La testata comune è lunga **112 byte** — è il significato della costante `0x24`
-nell'header. Da lì in poi comincia la parte specifica del tipo.
+The common header is **112 bytes** long — that is the meaning of the constant
+at `0x24` in the header. The type-specific part begins after it.
 
-| Off | Campo |
+| Off | Field |
 |---|---|
-| +0x20 | float[4] bounding box locale, min |
-| +0x30 | float[4] bounding box locale, max |
-| +0x44 | u32 **numero di chunk di geometria** |
-| +0x50 | u32[] puntatori ai chunk |
+| +0x20 | float[4] local bounding box, min |
+| +0x30 | float[4] local bounding box, max |
+| +0x44 | u32 **number of geometry chunks** |
+| +0x50 | u32[] pointers to the chunks |
 
-> Una mesh **non è un solo blocco di geometria**: è una lista di chunk.
+> A mesh **is not a single block of geometry**: it is a list of chunks.
 
-Sul disco 8.655 mesh ne hanno uno solo, 42 ne hanno due, 9 tre e una quattro,
-per un totale di 8.770 chunk, concentrati in sei file (`c_obj_all`, `Bee`,
-`Opening`, `map_object`, `c_bos_01_all`, `Castle`). Sono poche, ma sono fra le
-più grandi del gioco. Fermarsi al primo chunk non dà errore: perde in silenzio
-il resto della mesh.
+On the disc 8,655 meshes have one chunk, 42 have two, 9 three and one has
+four, for a total of 8,770 chunks, concentrated in six files (`c_obj_all`,
+`Bee`, `Opening`, `map_object`, `c_bos_01_all`, `Castle`). They are few, but
+they are among the largest in the game. Stopping at the first chunk raises no
+error: it silently loses the rest of the mesh.
 
-Il pattern `{puntatore, conteggio}` seguito dall'array inline si ripete in tutti
-i tipi di record: il puntatore sta a +0x40, il conteggio a +0x44, l'array a
-+0x50. Riconoscerlo è la chiave per leggere anche i record `material`.
+The `{pointer, count}` pattern followed by the inline array recurs in every
+record type: the pointer is at +0x40, the count at +0x44, the array at +0x50.
+Recognising it is the key to reading the `material` records too.
 
-### Chunk di geometria
+### Geometry chunk
 
-| Off | Campo |
+| Off | Field |
 |---|---|
-| +0x00 | u32 **indice dell'oggetto `material`** |
-| +0x10 | u32 numero di indici |
-| +0x14 | u32 byte basso = **primitiva** (3 lista, 4 strip); bit `0x100` = indici a 32 bit |
-| +0x18 | u32 puntatore alla **dichiarazione del vertice** |
-| +0x20 | u32 numero di attributi |
-| +0x24 | u32 numero di vertici |
-| +0x28 | u32 **offset del vertex buffer**, relativo alla regione dei buffer |
-| +0x2C | u32 dimensione del vertex buffer |
+| +0x00 | u32 **index of the `material` object** |
+| +0x10 | u32 number of indices |
+| +0x14 | u32 low byte = **primitive** (3 list, 4 strip); bit `0x100` = 32-bit indices |
+| +0x18 | u32 pointer to the **vertex declaration** |
+| +0x20 | u32 number of attributes |
+| +0x24 | u32 number of vertices |
+| +0x28 | u32 **offset of the vertex buffer**, relative to the buffer region |
+| +0x2C | u32 size of the vertex buffer |
 
-L'index buffer segue immediatamente il vertex buffer, allineato alla dimensione
-dell'indice. Non serve nessuna euristica di impacchettamento: i buffer sono
-indirizzati esplicitamente.
+The index buffer immediately follows the vertex buffer, aligned to the index
+size. No packing heuristic is needed: the buffers are addressed explicitly.
 
-Il campo +0x00 è l'indice dell'oggetto `material`, valido in **8.770 chunk su
-8.770**. È anche la spiegazione dei chunk multipli: *un chunk per materiale*.
+Field +0x00 is the index of the `material` object, valid in **8,770 chunks out
+of 8,770**. It is also what explains multiple chunks: *one chunk per
+material*.
 
-Il flag `0x100` è alzato in esattamente 3 chunk su 8.770 — gli unici che
-superano i 65.535 vertici (`c_bos_05_all`, `c_bos_08_all`, `Castle/kabe`, fino a
-123.712 vertici). Letti a 32 bit, l'indice massimo risulta *esattamente*
-`n_vertici − 1`.
+The `0x100` flag is set in exactly 3 chunks out of 8,770 — the only ones that
+exceed 65,535 vertices (`c_bos_05_all`, `c_bos_08_all`, `Castle/kabe`, up to
+123,712 vertices). Read as 32-bit, the maximum index comes out *exactly*
+`n_vertices − 1`.
 
-### Dichiarazione del vertice
+### The vertex declares its own layout
 
-Il formato del vertice non va indovinato: ogni chunk lo **dichiara**, come array
-di `n_attr` coppie u32 `(semantica, tipo)`. Gli attributi si susseguono nel
-vertice nell'ordine dichiarato, senza padding.
+The vertex format does not have to be guessed: every chunk **declares** it, as
+an array of `n_attr` u32 pairs `(semantic, type)`. The attributes follow one
+another in the vertex in the declared order, with no padding.
 
-| Semantica | | | Tipo | Byte |
+| Semantic | | | Type | Bytes |
 |---:|---|---|---:|---:|
-| 0 | posizione | | 0 | `float2` 8 |
-| 1 | normale | | 1 | `float3` 12 |
-| 2 | colore | | 2 | `float4` 16 |
+| 0 | position | | 0 | `float2` 8 |
+| 1 | normal | | 1 | `float3` 12 |
+| 2 | colour | | 2 | `float4` 16 |
 | 3 | uv | | 3 | `half2` 4 |
-| 6 | tangente | | 4 | `half3` 6 |
-| 7 | binormale | | 5 | `half4` 8 |
+| 6 | tangent | | 4 | `half3` 6 |
+| 7 | binormal | | 5 | `half4` 8 |
 | 8 | uv2 | | 6 | `ubyte4` 4 |
-| 9 | (da chiarire) | | 7 | `ubyte4` normalizzato, RGBA 4 |
+| 9 | (to be clarified) | | 7 | normalised `ubyte4`, RGBA 4 |
 
-I codici 6 e 7 hanno la stessa dimensione ma sono distinti: il 7 è il colore
-(l'ultimo byte vale `0xFF` nel 99% dei vertici, quindi l'ordine è RGBA), il 6
-compare solo accanto alla semantica 9.
+Codes 6 and 7 have the same size but are distinct: 7 is the colour (the last
+byte is `0xFF` in 99% of vertices, so the order is RGBA), and 6 appears only
+next to semantic 9.
 
-Formati osservati sul disco:
+Formats observed on the disc:
 
-| Chunk | Vertici | Stride | Dichiarazione |
+| Chunks | Vertices | Stride | Declaration |
 |---:|---:|---:|---|
-| 6.122 | 39.924 | 32 | pos:float3 nrm:float3 uv:float2 |
-| 1.507 | **1.518.514** | 34 | pos:half3 nrm:half3 col:color4 uv:half2 tan:half4 binorm:half3 |
-| 630 | 699.159 | 76 | pos:float3 nrm:float3 col:float4 uv:float2 tan:float4 binorm:float3 |
-| 194 | 16.739 | 40 | pos:float3 nrm:float3 col:float4 |
-| 71 | 37.629 | 88 | …float4 uv:float2 **uv2:float2 attr9:ubyte4** tan:float4 binorm:float3 |
+| 6,122 | 39,924 | 32 | pos:float3 nrm:float3 uv:float2 |
+| 1,507 | **1,518,514** | 34 | pos:half3 nrm:half3 col:color4 uv:half2 tan:half4 binorm:half3 |
+| 630 | 699,159 | 76 | pos:float3 nrm:float3 col:float4 uv:float2 tan:float4 binorm:float3 |
+| 194 | 16,739 | 40 | pos:float3 nrm:float3 col:float4 |
+| 71 | 37,629 | 88 | …float4 uv:float2 **uv2:float2 attr9:ubyte4** tan:float4 binorm:float3 |
 | 58 | 232 | 24 | pos:float3 nrm:float3 |
-| 51 | 17.622 | 20 | pos:half3 nrm:half3 col:color4 uv:half2 |
-| 47 | 19.960 | 16 | pos:half3 nrm:half3 col:color4 |
+| 51 | 17,622 | 20 | pos:half3 nrm:half3 col:color4 uv:half2 |
+| 47 | 19,960 | 16 | pos:half3 nrm:half3 col:color4 |
 | 33 | 154 | 30 | pos:half3 nrm:half3 uv:half2 tan:half4 binorm:half3 |
-| 32 | 73.698 | 48 | pos:float3 nrm:float3 col:float4 uv:float2 |
+| 32 | 73,698 | 48 | pos:float3 nrm:float3 col:float4 uv:float2 |
 | 13 | 906 | 12 | pos:half3 nrm:half3 |
-| 6 | 12.414 | 60 | pos:float3 nrm:float3 col:float4 uv:float2 uv2:float2 attr9:ubyte4 |
+| 6 | 12,414 | 60 | pos:float3 nrm:float3 col:float4 uv:float2 uv2:float2 attr9:ubyte4 |
 | 4 | 234 | 16 | pos:half3 nrm:half3 uv:half2 |
-| 2 | 1.392 | 36 | pos:half4 nrm:half4 uv:half2 tan:half4 binorm:half4 |
+| 2 | 1,392 | 36 | pos:half4 nrm:half4 uv:half2 tan:half4 binorm:half4 |
 
-Il formato a 34 byte da solo vale **1,5 milioni di vertici su 2,4**: è la
-geometria compressa dei personaggi e del mondo. È lo stesso set di attributi di
-quello a 76 byte, con posizioni e versori in half-float e il colore in un
-ubyte4.
+The 34-byte format alone accounts for **1.5 million vertices out of 2.4**: it
+is the compressed geometry of the characters and the world. It is the same
+attribute set as the 76-byte one, with positions and unit vectors in
+half-float and the colour in a ubyte4.
 
-Da notare: lo stesso `n_attr` copre set di attributi diversi — a 3 attributi
-esistono sia `pos/nrm/uv` (stride 32) sia `pos/nrm/col` (stride 40, mesh a
-colore per vertice senza texture). È per questo che dedurre il layout dal
-numero di attributi non poteva funzionare.
+Note that the same `n_attr` covers different attribute sets — at 3 attributes
+there are both `pos/nrm/uv` (stride 32) and `pos/nrm/col` (stride 40,
+per-vertex-colour meshes with no texture). That is why inferring the layout
+from the number of attributes could never have worked.
 
-Le semantiche 8 e 9 compaiono insieme e solo in 77 chunk, tutti in un unico
-file, `Opening.ps3.dsb`. La **semantica 9 è l'indice di osso**, cioè
-l'`atBlendIndex` che gli shader dichiarano (vedi [`renderer.md`](renderer.md)):
-i suoi valori stanno in `0 .. n_ossi-1` del record `skin` corrispondente, e i
-77 chunk che la portano sono esattamente le 77 mesh skinnate del disco. La
-semantica 8 è un secondo set di UV.
+Semantics 8 and 9 occur together and only in 77 chunks, all in a single file,
+`Opening.ps3.dsb`. **Semantic 9 is the bone index**, that is, the
+`atBlendIndex` the shaders declare (see [`renderer.md`](renderer.md)): its
+values lie in `0 .. n_bones-1` of the corresponding `skin` record, and the 77
+chunks that carry it are exactly the 77 skinned meshes on the disc. Semantic 8
+is a second UV set.
 
-Resta vero, e va tenuto insieme al resto, che **nessun vertice porta pesi**:
-c'è l'indice ma non `atBlendWeight`. Lo skinning è quindi **rigido**, un osso
-per vertice. Cadono così due ipotesi vecchie in un colpo solo: quella che lo
-stride 88 fosse 76 byte più indici *e* pesi, e quella successiva che le
-semantiche 8 e 9 non avessero a che fare con lo skinning.
+It remains true, and has to be kept together with the rest, that **no vertex
+carries weights**: there is the index but no `atBlendWeight`. Skinning is
+therefore **rigid**, one bone per vertex. Two old hypotheses fall at once: that
+stride 88 was 76 bytes plus indices *and* weights, and the later one that
+semantics 8 and 9 had nothing to do with skinning.
 
-### Copertura
+### Coverage
 
-Su 460 file, **460 estraggono la geometria**. Tutti gli oracoli sono verdi:
+Of 460 files, **460 yield their geometry**. Every oracle is green:
 
-| Controllo | Risultato |
+| Check | Result |
 |---|---|
-| somma delle dimensioni dichiarate == stride | 8.707 / 8.707 mesh |
-| ogni indice < numero di vertici | nessuna violazione |
-| le posizioni **riempiono** il bbox del record | 8.707 / 8.707 |
-| la scena composta riempie il bbox dell'header | 455 / 459 file |
-| normali versori | 100,00% su 2.438.577 |
-| tangenti / binormali versori | 99,62% / 99,63% su 2.256.848 |
-| facce allineate agli assi | 87,59% su 1.611.418 triangoli |
-| UV interamente in 0..1 | 78,6% dei chunk; 99,8% entro ±64 (tiling) |
-| chunk → oggetto `material` | 8.770 / 8.770 |
-| material → oggetto `effect` | 1.792 / 1.792 |
-| slot texture → oggetto `texture` o −1 | 1.954 assegnazioni, 0 non valide |
+| sum of the declared sizes == stride | 8,707 / 8,707 meshes |
+| every index < number of vertices | no violations |
+| the positions **fill** the record's bbox | 8,707 / 8,707 |
+| the composed scene fills the header bbox | 455 / 459 files |
+| unit normals | 100.00% over 2,438,577 |
+| unit tangents / binormals | 99.62% / 99.63% over 2,256,848 |
+| axis-aligned faces | 87.59% over 1,611,418 triangles |
+| UVs entirely within 0..1 | 78.6% of chunks; 99.8% within ±64 (tiling) |
+| chunk → `material` object | 8,770 / 8,770 |
+| material → `effect` object | 1,792 / 1,792 |
+| texture slot → `texture` object or −1 | 1,954 assignments, 0 invalid |
 
-I 4 file che non riempiono il bbox della scena (`Dragon`, `Golem`, `Water`,
-`Opening`) sbagliano di frazioni di unità su un asse: sono scene animate, dove
-il bounding box dichiarato copre il movimento e non la posa a riposo.
+The 4 files that do not fill the scene bbox (`Dragon`, `Golem`, `Water`,
+`Opening`) are off by fractions of a unit on one axis: they are animated
+scenes, where the declared bounding box covers the motion and not the rest
+pose.
 
-Lo stesso parser regge sulle mappe senza una modifica: contando anche i 167
-`.pac` si arriva a 5.297 blocchi, 20.804 mesh e **54.176.741 vertici**, sempre
-con zero problemi. Vedi [`format_pac.md`](format_pac.md).
+The same parser holds on the maps without a single change: counting the 167
+`.pac` files as well comes to 5,297 blocks, 20,804 meshes and **54,176,741
+vertices**, still with zero problems. See [`format_pac.md`](format_pac.md).
 
-## Record `node` (tipo 17) — il grafo di scena
+## `node` record (type 17) — the scene graph
 
-| Off | Campo |
+| Off | Field |
 |---|---|
-| +0x40 | float[4] posizione |
-| +0x50 | float[4] **quaternione** di rotazione (x, y, z, w) |
-| +0x60 | float[4] scala |
-| +0x70 | u32 **indice dell'oggetto genitore**, `0xFFFFFFFF` = radice |
-| +0x78 | u32 **indice dell'oggetto collegato**, `0xFFFFFFFF` = nessuno |
+| +0x40 | float[4] position |
+| +0x50 | float[4] rotation **quaternion** (x, y, z, w) |
+| +0x60 | float[4] scale |
+| +0x70 | u32 **index of the parent object**, `0xFFFFFFFF` = root |
+| +0x78 | u32 **index of the attached object**, `0xFFFFFFFF` = none |
 
-I due campi sono indici nella tabella degli oggetti, **non** CRC — ed è
-esattamente l'errore che vale la pena non rifare: cercarli fra i CRC dà valori
-"sconosciuti" piccoli e ordinati, che è il sintomo di un indice letto come hash.
+Both fields are indices into the object table, **not** CRCs — and that is
+exactly the mistake worth not making again: looking them up among the CRCs
+gives small, ordered "unknown" values, which is the symptom of an index read
+as a hash.
 
-La verifica su tutti gli 11.671 nodi del disco non lascia margini:
+The check over all 11,671 nodes on the disc leaves no room:
 
-- il genitore è **sempre** un altro `node` (9.135) o assente (2.536); mai un
-  oggetto di altro tipo, mai fuori range, **nessun ciclo**, profondità massima 8;
-- il collegato è **sempre** `mesh` (8.633), `light` (400), `skin` (77) o
-  `camera` (12), mai un `node`. I conteggi coincidono con il censimento dei tipi.
+- the parent is **always** another `node` (9,135) or absent (2,536); never an
+  object of another type, never out of range, **no cycles**, maximum depth 8;
+- the attached object is **always** a `mesh` (8,633), `light` (400), `skin`
+  (77) or `camera` (12), never a `node`. The counts match the type census.
 
-E la conferma semantica, che vale più dei numeri: in `c_bos_01.ps3.dsb` le
-catene sono `neck_04 → neck_03 → neck_02 → neck_01 → c_bos_01` e
-`tale_05 → tail_04 → … → tail_01 → c_bos_01`. È lo scheletro di un drago.
+And the semantic confirmation, which is worth more than the numbers: in
+`c_bos_01.ps3.dsb` the chains are `neck_04 → neck_03 → neck_02 → neck_01 →
+c_bos_01` and `tale_05 → tail_04 → … → tail_01 → c_bos_01`. It is the skeleton
+of a dragon.
 
-Composta la catena di trasformazioni fino alla radice, `demoplay` dà il
-risultato esatto: bounding box locale (−256,0,−128)…(256,0,128), nodo in
-(640,−360,0) ruotato di 90° attorno a X, e la scena finisce **precisamente** in
-(384,−488,0)…(896,−232,0), che è il bounding box dichiarato nell'header.
+With the chain of transforms composed up to the root, `demoplay` gives the
+exact result: local bounding box (−256,0,−128)…(256,0,128), node at
+(640,−360,0) rotated 90° about X, and the scene ends up **precisely** at
+(384,−488,0)…(896,−232,0), which is the bounding box declared in the header.
 
-## Record `material` (tipo 2) ed `effect` (tipo 4)
+## `material` (type 2) and `effect` (type 4) records
 
-Entrambi sono **a dimensione fissa**: 368 byte il materiale, 32 l'effetto. Ed è
-la prima cosa da sapere sull'effetto: i suoi 16 byte oltre la testata comune
-sono `00000000 00000000 CCCCCCCC CCCCCCCC` in **tutti e 1.792** i record. Un
-`effect` è solo una maniglia con un nome — non porta dati. Il conteggio 1:1 con
-i materiali si spiega così, e non c'è niente da estrarne.
+Both are **fixed-size**: 368 bytes for the material, 32 for the effect. And
+that is the first thing to know about the effect: its 16 bytes past the common
+header are `00000000 00000000 CCCCCCCC CCCCCCCC` in **all 1,792** records. An
+`effect` is only a handle with a name — it carries no data. That explains the
+1:1 count with materials, and there is nothing to extract from it.
 
-| Off | Campo |
+| Off | Field |
 |---|---|
-| +0x20 | u32 **indice dell'oggetto `effect`** associato |
-| +0x24 | u32 puntatore al blocco parametri (sempre a +0x30) |
-| +0x28 | u32 **identificativo di shader / tecnica** — 43 valori distinti |
+| +0x20 | u32 **index of the associated `effect` object** |
+| +0x24 | u32 pointer to the parameter block (always at +0x30) |
+| +0x28 | u32 **shader / technique identifier** — 43 distinct values |
 | +0x3C | float[4] **diffuse** RGBA |
 | +0x58 | float[3] **ambient** |
 | +0x64 | float[3] **emission** |
 | +0x70 | float[3] **specular** |
-| +0x7C | float esponente speculare — `5.0` su tutto il disco |
-| +0xE4 | u32[4] **texture per stage**, `0xFFFFFFFF` = nessuna |
+| +0x7C | float specular exponent — `5.0` across the whole disc |
+| +0xE4 | u32[4] **texture per stage**, `0xFFFFFFFF` = none |
 
-Il campo +0x20 cade su un oggetto `effect` in **1.792 casi su 1.792**.
+Field +0x20 lands on an `effect` object in **1,792 cases out of 1,792**.
 
-### Le texture, per stage
+### The textures, by stage
 
-I quattro slot a +0xE4 sono indici di oggetto, e cadono su un oggetto `texture`
-o valgono −1: **zero riferimenti non validi** su 1.954 assegnazioni. La
-posizione nello slot *è* lo stage, e coincide con l'assegnazione che
-[`renderer.md`](renderer.md) aveva ricavato dagli shader:
+The four slots at +0xE4 are object indices, and they land on a `texture`
+object or are −1: **zero invalid references** over 1,954 assignments. The
+position in the slot *is* the stage, and it matches the assignment that
+[`renderer.md`](renderer.md) had derived from the shaders:
 
-| Slot | Stage | Materiali | Le texture che ci finiscono |
+| Slot | Stage | Materials | The textures that end up there |
 |---:|---|---:|---|
-| +0xE4 | 0 — colore base | 1.519 | `dot_base.dds`, `loading.dds`, `background.dds` |
-| +0xE8 | 1 — utility color | **0** | mai usato |
+| +0xE4 | 0 — base colour | 1,519 | `dot_base.dds`, `loading.dds`, `background.dds` |
+| +0xE8 | 1 — utility colour | **0** | never used |
 | +0xEC | 2 — normal map | 377 | `dot_nm`, `dot_512_nm`, `dot_256_nm`, `editchar_nml` |
 | +0xF0 | 3 — environment map | 58 | `forref_dungeon`, `forref_sword`, `forref_coin`, `forref_field` |
 
-Sono i **nomi** a chiudere la verifica, non i conteggi: nello slot 2 finiscono
-solo file che terminano in `_nm` o `_nml` — cioè normal map — e nello slot 3
-solo file che cominciano per `forref_`, cioè *for reflection*. Nessuno dei due
-prefissi compare mai nello slot 0. Un'assegnazione sbagliata degli slot non
-potrebbe produrre questa separazione.
+It is the **names** that close the check, not the counts: slot 2 receives
+only files ending in `_nm` or `_nml` — normal maps — and slot 3 only files
+starting with `forref_`, that is, *for reflection*. Neither prefix ever
+appears in slot 0. A wrong assignment of the slots could not produce this
+separation.
 
-Le quattro `forref_*` sono le texture di riflessione effettivamente referenziate
-dai materiali; `ref_01.dds`, l'unica cubemap del gioco secondo `renderer.md`,
-non compare qui — quindi lo stage 3 in pratica usa la variante *sphere map*
+The four `forref_*` are the reflection textures the materials actually
+reference; `ref_01.dds`, the game's only cubemap according to `renderer.md`,
+does not appear here — so in practice stage 3 uses the *sphere map* variant
 (`gSphereEnvironmentMap_stage3`).
 
-### I parametri
+### The parameters
 
-`specular` vale `(0.8, 0.8, 0.8)` nel 99% dei materiali e l'esponente `5.0` in
-tutti: il gioco ha una risposta speculare uniforme, coerente con l'estetica a
-voxel. Diffuse e ambient variano; `emission` è nulla nell'86% dei casi.
+`specular` is `(0.8, 0.8, 0.8)` in 99% of materials and the exponent `5.0` in
+all of them: the game has a uniform specular response, consistent with the
+voxel look. Diffuse and ambient vary; `emission` is zero in 86% of cases.
 
-La conferma semantica di `emission` vale più della statistica: dei 26 materiali
-che hanno `light` nel nome, **22 hanno emissione non nulla**, contro il 14%
-degli altri 1.766. E i valori si leggono da soli — `MR_c_bos_heart` (il cuore
-del boss) ha diffuse `(1.00, 0.49, 0.00)` ed emissione `0.30`: arancione e
-luminoso.
+The semantic confirmation of `emission` is worth more than the statistics: of
+the 26 materials with `light` in their name, **22 have non-zero emission**,
+against 14% of the other 1,766. And the values read themselves —
+`MR_c_bos_heart` (the boss's heart) has diffuse `(1.00, 0.49, 0.00)` and
+emission `0.30`: orange and glowing.
 
-## Binding delle costanti
+## Constant binding
 
-Il campo header `0x38` punta a una lista di risorse usate per il disegno, una
-voce per oggetto: `{indice del nome, CRC del nome, 0x01CCCCCC, puntatore}`.
-L'ultimo puntatore porta a una **tabella di binding** di voci da 12 byte
-`{puntatore al valore, 0, tag}`, dove ogni valore è un `float4` in uno slot
-allineato a 16 byte.
+Header field `0x38` points at a list of resources used for drawing, one entry
+per object: `{name index, name CRC, 0x01CCCCCC, pointer}`. The last pointer
+leads to a **binding table** of 12-byte entries `{pointer to the value, 0,
+tag}`, where each value is a `float4` in a 16-byte-aligned slot.
 
-Su `demoplay` la tabella del nodo ha 11 voci: tre con tag `0x1E1800xx` che
-puntano alle tre componenti della scala, quattro con `0x1F1800xx` per il
-quaternione, tre con `0x201800xx` per la posizione, più una `0x22000000`. Cioè
-**una componente per slot**, come vuole il file di costanti di RSX.
+On `demoplay` the node's table has 11 entries: three with tag `0x1E1800xx`
+pointing at the three components of the scale, four with `0x1F1800xx` for the
+quaternion, three with `0x201800xx` for the position, plus one `0x22000000`.
+That is **one component per slot**, as RSX's constant file wants.
 
-È il meccanismo che collegherà i float dei record `material` agli uniform degli
-shader elencati in [`renderer.md`](renderer.md): non un layout fisso da
-indovinare, ma una tabella con dentro gli identificatori.
+This is the mechanism that will connect the floats of the `material` records
+to the uniforms of the shaders listed in [`renderer.md`](renderer.md): not a
+fixed layout to be guessed, but a table with the identifiers inside it.
 
-## Record `skin` (tipo 16)
+## `skin` record (type 16)
 
-Un nodo non aggancia sempre una mesh: nei 77 casi del disco — tutti in
-`Opening.ps3.dsb` — aggancia uno `skin`, che a sua volta nomina la mesh. Chi
-segue solo `node → mesh` perde silenziosamente quelle 77 mesh, cioè 50.043
-vertici.
-
-```
-  +0x20 u32   indice dell'oggetto mesh
-  +0x30 u32   numero di ossi
-  +0x60       poi n entry da 80 byte:
-                +0x00 float[16]  matrice 4x4
-                +0x40 u32        indice del nodo dell'osso
-                +0x44 u8[12]     0xCC di riempimento
-```
-
-Che il layout sia questo lo dice il record stesso: `0x60 + n * 0x50` dà
-**esattamente** la sua dimensione. La stessa prova che ha risolto
-`MAP_ALIGNMENT`.
-
-La matrice è **row-major con la traslazione nell'ultima riga**, convenzione
-D3D, ed è la **bind pose inversa**. L'oracolo che decide la convenzione è
-questo: `world(osso) @ Mᵀ` viene *identica per tutti gli ossi* di una stessa
-skin — che è la proprietà che definisce la posa di binding — mentre le altre
-tre combinazioni (`M @ world`, `world @ M`, `Mᵀ @ world`) danno matrici tutte
-diverse fra loro.
-
-Con l'indice di osso nella semantica 9 del vertice e nessun peso, la formula si
-riduce a un solo termine:
+A node does not always attach a mesh: in the disc's 77 cases — all in
+`Opening.ps3.dsb` — it attaches a `skin`, which in turn names the mesh.
+Following only `node → mesh` silently loses those 77 meshes, that is, 50,043
+vertices.
 
 ```
-v_mondo = world(osso[v]) @ Mᵀ[osso[v]] @ v
+  +0x20 u32   index of the mesh object
+  +0x30 u32   number of bones
+  +0x60       then n 80-byte entries:
+                +0x00 float[16]  4x4 matrix
+                +0x40 u32        index of the bone's node
+                +0x44 u8[12]     0xCC fill
 ```
 
-**Attenzione a una trappola.** Disegnando le parti con la trasformazione del
-*nodo* invece che con quella dell'osso si ottiene un villaggio 3D dall'aria
-plausibile, con qualche pezzo fuori posto — sembra un errore di dettaglio ed è
-invece l'ipotesi sbagliata per intero. La composizione giusta è **piatta**: la
-catena di nodi passa per `oka_s-node` (scala Y 0,04) e `Dummy_2D_pos-node`, e
-schiaccia tutto su un piano verticale. La scena di apertura è un **fondale 2D
-visto dall'alto** — villaggio, sentieri, staccionata, alberi — non un plastico
-tridimensionale. Il risultato "quasi giusto" era il più ingannevole dei due.
+The record itself says the layout is this: `0x60 + n * 0x50` gives
+**exactly** its size. The same proof that solved `MAP_ALIGNMENT`.
 
-## La catena completa
+The matrix is **row-major with the translation in the last row**, the D3D
+convention, and it is the **inverse bind pose**. The oracle that settles the
+convention is this: `world(bone) @ Mᵀ` comes out *identical for every bone*
+of a given skin — which is the property that defines the bind pose — while the
+other three combinations (`M @ world`, `world @ M`, `Mᵀ @ world`) give
+matrices that all differ from one another.
 
-Tutti gli anelli sono ora espliciti, e ognuno è un indice di oggetto verificato
-sull'intero corpus:
+With the bone index in the vertex's semantic 9 and no weights, the formula
+reduces to a single term:
 
 ```
-node --+0x78--> mesh --chunk +0x00--> material --+0xE4[stage]--> texture --nome--> TPKG
+v_world = world(bone[v]) @ Mᵀ[bone[v]] @ v
+```
+
+**Beware of a trap.** Drawing the parts with the *node*'s transform instead of
+the bone's gives a plausible-looking 3D village with a few pieces out of
+place — it looks like a detail error and is instead the wrong reading
+altogether. The right composition is **flat**: the chain of nodes goes through
+`oka_s-node` (Y scale 0.04) and `Dummy_2D_pos-node`, and squashes everything
+onto a vertical plane. The opening scene is a **2D backdrop seen from
+above** — village, paths, fence, trees — not a three-dimensional scale model.
+The "almost right" result was the more deceptive of the two.
+
+## The complete chain
+
+Every link is now explicit, and each is an object index checked over the whole
+corpus:
+
+```
+node --+0x78--> mesh --chunk +0x00--> material --+0xE4[stage]--> texture --name--> TPKG
   |        \                              |
-  |         +--> skin --+0x20--> mesh     +0x20 --> effect (maniglia vuota)
-  +0x70 genitore        +0x60 --> ossi (indice di nodo + bind pose inversa)
+  |         +--> skin --+0x20--> mesh     +0x20 --> effect (empty handle)
+  +0x70 parent          +0x60 --> bones (node index + inverse bind pose)
 ```
 
-Gli oggetti `texture` portano il nome del file `.dds`, che è la stessa chiave
-usata dai pacchetti [`TPKG`](format_tpk.md): l'ultimo passo del join è per
-nome, senza indici numerici.
+The `texture` objects carry the name of the `.dds` file, which is the same key
+the [`TPKG`](format_tpk.md) packages use: the last step of the join is by
+name, with no numeric index.
 
-## Cosa manca
+## What is missing
 
-- Dei record `skin` restano i campi minori: i puntatori a +0x24 / +0x2C, che
-  puntano dentro il record stesso, e i contatori a +0x28 / +0x3C.
-- Significato dei tag della tabella di binding, e dei 43 identificativi di
-  shader del campo material +0x28.
-- Campi del materiale ancora senza nome: un secondo colore a +0xC4, una coppia
-  `(0.2, 0.8)` a +0xD4 che ha la forma di bias/scala di Fresnel, e i bitfield di
-  stato a +0x164 / +0x168.
+- In the `skin` records, the minor fields remain: the pointers at +0x24 /
+  +0x2C, which point inside the record itself, and the counters at +0x28 /
+  +0x3C.
+- The meaning of the binding table's tags, and of the 43 shader identifiers in
+  material field +0x28.
+- Material fields still unnamed: a second colour at +0xC4, a `(0.2, 0.8)` pair
+  at +0xD4 that has the shape of a Fresnel bias/scale, and the state bitfields
+  at +0x164 / +0x168.
 
-## Uso
+## Use
 
 ```
 python tools/dsb.py info   <file.dsb>
-python tools/dsb.py survey <dir>                validazione del container
-python tools/dsb.py verify <dir>                oracoli sulla geometria
-python tools/dsb.py obj    <file.dsb> <out.obj> geometria in spazio locale
-python tools/dsb.py scene  <file.dsb> <out.obj> scena composta in spazio mondo
-python tools/dsb.py names  <dir> --out x.json   dizionario CRC32 -> nome
+python tools/dsb.py survey <dir>                container validation
+python tools/dsb.py verify <dir>                oracles on the geometry
+python tools/dsb.py obj    <file.dsb> <out.obj> geometry in local space
+python tools/dsb.py scene  <file.dsb> <out.obj> composed scene in world space
+python tools/dsb.py names  <dir> --out x.json   CRC32 -> name dictionary
 ```
 
-I comandi accettano indifferentemente `.dsb`, i `.pac` delle mappe e i `.gz`
-non decompressi: il contenitore lo risolve `blocks()`, vedi
-[`format_pac.md`](format_pac.md). Nei `.pac` la sezione si sceglie con
-`--sec N`; `verify` accetta `--every N` per campionare i corpora grandi.
+The commands accept `.dsb` files, the maps' `.pac` files and undecompressed
+`.gz` files alike: `blocks()` resolves the container, see
+[`format_pac.md`](format_pac.md). In `.pac` files the section is chosen with
+`--sec N`; `verify` accepts `--every N` to sample large corpora.
 
-`obj` e `scene` scrivono anche un `.mtl` accanto all'`.obj`, con colori,
-esponente speculare e i nomi `.dds` in `map_Kd` / `norm` / `refl`. Le mesh
-portano `usemtl`, quindi il modello si apre già assegnato — le texture vanno
-solo estratte dai `TPKG` con lo stesso nome.
+`obj` and `scene` also write a `.mtl` next to the `.obj`, with colours,
+specular exponent and the `.dds` names in `map_Kd` / `norm` / `refl`. The
+meshes carry `usemtl`, so the model opens already assigned — the textures of
+the same name only need to be extracted from the `TPKG` packages.
 
-Il comando `names` costruisce un dizionario CRC32→nome da **tutte** le tabelle
-stringhe del corpus: un nome presente in un file risolve i riferimenti in tutti
-gli altri. Sul disco le 39.348 stringhe si riducono a **15.206 nomi distinti**.
+The `names` command builds a CRC32→name dictionary from **all** the string
+tables in the corpus: a name present in one file resolves the references in
+every other. On the disc the 39,348 strings reduce to **15,206 distinct
+names**.
