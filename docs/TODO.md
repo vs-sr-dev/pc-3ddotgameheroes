@@ -8,106 +8,119 @@ disc survey in [`RECON.md`](RECON.md).*
 
 # Next session
 
-**Session 14 changed road and reached the logos.** The project is now a
-static recompilation of the game's own executable on
-[ps3kit](https://github.com/vs-sr-dev/ps3kit), which left PC-ROA for its own
-repository the same day and is a submodule here. The recompiled game reaches
-its first flip and draws its four logo screens at 60 frames (ATLUS, FROM
-SOFTWARE, DAIKOKU and YEBIS), with FMOD's SPU mixer running as an lv2 SPU
-thread group and a SPURS task waiting on its event flag. Then it checks for
-its save data, finds none, and stays on a black screen with its main loop
-running.
+**Session 15 got past the black screen to the title and its demo.** The
+boot sequence was waiting for its trophies to install. With `sceNpTrophy` in
+the kit the game writes its system save, checks its game data and reaches
+the title screen: the logo over `TitleMovie_Omote_eu.bik`, with FMOD playing
+the title music through its SPU mixer and its PCM codec. Left alone it plays
+the demo play (`PlayDemoMovieUS.bik`, with its own sound) and comes back, as
+long as it is left; the user watched it through and heard both. Both are
+Bink movies, decoded by the game's own Bink. Played on, Start leads to
+character creation, the intro and NOW LOADING, and the first map stops on
+Edge zlib (item 1).
 
 Where it stands:
 
-- **Decryption**: [`tools/self.py`](../tools/self.py), ported from PC-ROA;
+- **Decryption**: [`tools/self.py`](../tools/self.py);
   [`format_self.md`](format_self.md).
 - **Census**: [`eboot.md`](eboot.md). 20,672 functions, 237 imports all
-  named, 638 switch tables all resolved, 26 SPU ELFs.
-- **The kit, for this game**: SPU ELFs recompiled at their load address,
-  lv2 SPU thread groups, SPURS task sets, tasks and event flags on a kernel
-  of the runtime's own, `spu_printf`, the RSX's I/O map, reports and inline
-  transfers, audio notifications, `/dev_flash`, `/dev_hdd1`. Checked on
-  PC-ROA and pushed (`ps3kit` 9408baf).
-- **This repository's own knowledge so far**: `tools/flash.py`, a declared
-  stand-in for the system's MP3 decoder, which FMOD reads from
-  `/dev_flash` and which the disc does not carry.
+  named, 638 switch tables all resolved, 26 SPU ELFs, the 19 FMOD modules
+  now translated at the bias the run showed.
+- **The kit, for this game** (session 15): trophies from the disc's set,
+  the SPU segment table's layout, SPU modules as overlays, the texture flush
+  outside a draw's record, and a fault report that names the library.
+- **This repository's own knowledge**: `tools/flash.py` (the MP3 decoder's
+  stand-in), the `trophy` set of the extract, and the bias `0x15670`.
 
-The commands are at the end of [`eboot.md`](eboot.md).
+The commands are at the end of [`eboot.md`](eboot.md); the extract needs the
+`trophy` set now (`python tools/iso.py extract trophy`).
 
-### 1. The black screen after the save-data check.
+### 1. The first map waits for Edge zlib: SPURS lock-free queues.
 
-After `cellSaveDataListAutoLoad` for `BLES00875SYSTEM` and
-`BLES00875GAME-DATA` (both answered "no data": the game's callback says so),
-the game draws 8 draws a frame on black, opens no file, calls no stub, and
-its main thread spends nearly all its time in the frame-pacing sleep of
-`0x2A438`. Nothing waits on a lock (the kit now names any lightweight-mutex
-wait over five seconds). Pressing Start or cross changes nothing.
+The user played past the title at the end of session 15: Start, then
+character creation (its music, the models drawn; see item 2), the
+parchment intro, NOW LOADING, and a black screen at 0 frames with the music
+going on. The game had opened the first map, `map/pac_data/Field_18.ps3.pac.gz`
+(the gzip sessions 1-13 inflated in Python), created a SPURS instance and the
+taskset `Zlib::Decode` with `edgezlib_inflate_task`, and pushed the job with
+`_cellSpursLFQueuePushBody`, which the kit answers `CELL_OK` and drops; the
+main thread then waits on an event flag (`cellSpursEventFlagWait`, lr
+`0x5CF478`) for an inflate that never comes. `_cellSpursLFQueueInitialize`
+and `cellSpursLFQueueAttachLv2EventQueue` came before it, with the same
+answer. Bullet's queue and barrier (`0x955000`) will come next.
 
-Leads, cheapest first: the game's TTY (stdout) for its own messages; the
-calls `0x473E8C` (`cellSysCacheMount`, now implemented, not reached yet),
-`cellGameDataCheck` and `cellGameCreateGameData` (0x525340, 0x52CD08: the
-HDD install the free-space check was about, 871 MB, which the disc's
-`HDDInstallList.lua.eu` lists); the second SPURS instance at `0x5CF000`,
-whose PPU thread waits on an event flag; and the state machine around
-`0x2A438`, read off the recompiled game with `gdb_trace.py`.
+RPCS3 runs the firmware's library and has no implementation to read; the
+layout is in the task's own code (`edgezlib_inflate_task`, which pops the
+queue), and RPCS3 notes that `CellSpursLFQueue` is a `CellSyncLFQueue`. Read
+the task's side, then write the PPU's, as the event flags were done in
+session 14 (`PS3KIT_SPURS=1` shows the task's syscalls and events).
 
-### 2. Which copy of the scripts the game runs.
+### 2. Broken polygons on the character models.
+
+In character creation some models have vertical lines of broken polygons,
+others are right (the user's report). The first models the engine draws:
+compare with the `DSBF` readings of sessions 1-2 (vertex stride and
+attributes declared in the record, [`format_dsb.md`](format_dsb.md)) and with
+`PS3KIT_DRAWDUMP` of one broken draw.
+
+### 3. FMOD's effects, and the real MP3 decoder.
+
+`fmod_codec_raw` runs at LS `0x156F0` (bias `0x15670`), found by the run.
+The 17 effects and the ADPCM codec are translated at the same bias, which
+no run has confirmed: a module copied elsewhere is reported once by the
+runtime (`... local store holds other code there`), and its bias goes on the
+recompiler's command line. `flashMP3.pic` is still the stand-in (the disc
+has no MP3).
+
+### 4. Which copy of the scripts the game runs.
 
 The EBOOT carries 1,488 Lua sources, 112 different from the disc's
-`all.lua.eu` (see [`eboot.md`](eboot.md)). In 90 seconds of boot no
-`.lua.eu` is opened. Find the loader (the `-- Start` / `-- End` markers, or
-the Lua 5.1.3 `lua_load` it calls) and see where its chunks come from. The
-answer decides how the scripts are modded.
+`all.lua.eu` (see [`eboot.md`](eboot.md)). Through the logos, the title and
+the demo no `.lua.eu` is opened. Find the loader (the `-- Start` / `-- End`
+markers, or the Lua 5.1.3 `lua_load` it calls) and see where its chunks come
+from. The answer decides how the scripts are modded.
 
-### 3. SPURS queues, lock-free queues and the barrier.
+### 5. SPURS barriers and the other queues.
 
-They answer `CELL_OK` and do nothing (the kit's README says so). Edge zlib's
-inflate queue (`0x69C000`) and Bullet (`0x955000`) need them. RPCS3 has no
-implementation to read (it runs the firmware's library); the layouts are in
-the SPU side of the protocol, which is the tasks' own code
-(`edgezlib_inflate_task`, the two Bullet tasks), and RPCS3 notes that
-`CellSpursLFQueue` is a `CellSyncLFQueue`. Read the task's side, then write
-the PPU's, as the event flags were done in session 14.
+Item 1 does the lock-free queue for Edge zlib; Bullet's tasks (`0x955000`)
+use a queue and a barrier, which answer `CELL_OK` and do nothing too.
 
-### 4. FMOD: the real decoder and the 19 modules.
-
-- `flashMP3.pic` is in the firmware update on the disc (`PS3UPDAT.PUP`,
-  3.15), in an encrypted package. Reading it would replace the stand-in with
-  the player's own file; until then MP3 decoding is absent, which this disc
-  does not use (it has no MP3).
-- FMOD's 2 codecs and 17 effects are relocatable SPU modules its mixer
-  loads where it chooses. When it first does, the address can be read off
-  the run (`PS3KIT_SPU_DMA=1`) and the modules recompiled for it.
-
-### 5. A glitch in the game's own text.
+### 6. A glitch in the game's own text.
 
 The free-space message drew its number with the digits overlapping
 ("8 7 1 M|6 9s2 0e2ded"). The text is the game's (`Font.bin` and the font
 textures), drawn by its code: a draw or a texture state the renderer gets
-wrong. Look at it when a screen with text comes back.
+wrong. Look at it when a screen with text comes back (the title's
+copyright line looked right).
 
-### 6. Shader programs compiled at first sight.
+### 7. Shader programs compiled at first sight.
 
-Shared with PC-ROA, where it is item 2 of its TODO: the kit compiles a
-program's GLSL when a draw first uses it, and a scene's first second can
-spend 400 ms on it. PC-ROA's play check of session 14 measured it again:
-171 of 182 seconds at 30 frames, every drop at a scene load. A program cache
-on disk belongs in the kit.
+Shared with PC-ROA (item 2 of its TODO): a program cache on disk belongs in
+the kit.
 
-### 7. The tools still speak Italian.
+### 8. The tools still speak Italian.
 
 The documents are in English since session 14; the Python tools' docstrings,
-comments and messages are not, and several documents quote their output
-(already in English). `tools/api_domains.py` writes `api_domains.md` and
-would bring the Italian back if run.
+comments and messages are not. `tools/api_domains.py` writes
+`api_domains.md` and would bring the Italian back if run. `tools/iso.py`
+has its first English lines (the `trophy` set).
+
+### 9. An instrument worth keeping.
+
+Session 15 found the stuck state with a watcher that reads guest memory
+from outside the running process (`ReadProcessMemory` on `g_mem`, which
+`nm` locates), at full speed: gdb under Windows slowed the game twenty-fold
+and never reached the save check. It lives in the session's scratch space;
+it belongs in the kit beside `gdb_trace.py`, with `g_mem`'s address found
+by `nm` instead of written in.
 
 ### Alongside, every session.
 
 - **Every kit change checked on PC-ROA**, which must keep reaching its logos,
   movie, title, character creation, town and first quest at 30 frames.
 - **The kit stays free of both games.** What is this game's knowledge lives
-  here (`tools/`, and a port layer when one is needed).
+  here (`tools/`, the bias on the command line, and a port layer when one
+  is needed).
 - **Every invention declared**: the kit's in its README's known
   approximations, this repository's at its site and here.
 - **Nothing generated is committed.** `build/` holds the ELF and the C++.
@@ -196,6 +209,87 @@ settled when someone next works in each document:
 ---
 
 # Log
+
+## Session 15 - 2026-10-23
+
+**From the black screen to the title, its music and its demo.**
+
+**A false lead first.** Every sound was opened twice on the HDD and failed
+(`//sound/001_kettei.wav -> ENOENT`) after a `stat` on the disc had
+succeeded. It is only the engine's check for an installed copy: the 281
+sounds were then opened from the disc, as the textures were.
+
+**The instrument.** gdb under Windows, tracing the state machine at
+`0x56621C`, slowed the game twenty-fold and never reached the save check.
+A watcher reading guest memory from outside the process
+(`ReadProcessMemory` on `g_mem`, found with `nm`) did it at full speed: the
+boot state at `+0x638` of its object went 0, 2, 3, 7, 9, 11, 12 and stopped
+at **5**.
+
+**State 5 waits for the trophies.** It polls two functions on the object at
+`0x2AC9C18`, the one `sceNpTrophyCreateContext` had been handed. The game's
+`trophy.cpp` (its assert path names it) prints `install error : invalid
+context or invalid handle!!` when either is zero, and the kit's stubs wrote
+neither. Its install thread registers the context with a status callback
+(statuses 0-2 an error, 3 installed, 8 complete), asks five trophies
+(50, 41, 4, 23, 43) whether they are unlocked and only then raises the flag
+state 5 waits on. The kit now has `sceNpTrophy` (`runtime/trophy.cpp`): the
+set from the disc's `TROPHY.TRP` (plain XML, 51 trophies, platinum `000`),
+the statuses in order on the calling thread, the details and hidden
+trophies as RPCS3's reading of the system has them, unlocks kept on
+`/dev_hdd0`, the platinum unlocked by the system. `TROPHY.TRP` was one of the
+files the manifest left out on purpose; it is the `trophy` set now. The
+codes were checked against RPCS3's header: the unlock thread's
+`0x8002292B` is `SAVEDATA_USER_DOES_NOT_MATCH`, which a guess had got wrong.
+
+**Then the title, and a crash in `memcpy`.** The game wrote its system
+save, checked its game data, loaded `UserInterface/Title` and started the
+title movie and music, and the process died in msvcrt's `memcpy` reading
+guest address 0. The kit's fault report now names the library and the
+executable's addresses on the stack: an SPU DMA, from FMOD's mixer, of
+`0x2DC0` bytes from address 0. FMOD reads the segment table that
+`sys_spu_image_import` writes for its modules, and the kit had the address
+at `+0x0C`: in `sys_spu_segment` it is a union with a `u64`, so at `+0x10`
+(RPCS3: `CHECK_SIZE(sys_spu_segment, 0x18)`). The kit had read its own
+table consistently, which is why the mixer itself ran.
+
+**The module.** With the address right, the mixer copied `fmod_codec_raw`
+(the PCM codec for the title music's stream) to LS `0x156F0` and branched
+to `0x15888`: its entry `0x218` plus `0x15670`. The modules' relocation
+sections are all empty: the code is position-independent. The recompiler
+now translates them at a bias given on its command line
+(`--spu-module-bias 0x15670`), and `spu_run` runs the overlay whose image
+local store holds when a program branches out of itself. Without it the
+mixer's thread had ended, and the FMOD event thread, which waits on it,
+held a lock the main thread then waited on: the freeze the user saw at the
+start of the demo.
+
+**And a crash in the renderer.** After about 25 seconds of title, `draw`
+read a texture record from the wrong place. When the textures sent pass
+512 MB the capture tells the renderer to start its textures again, and it
+said so *inside* the draw's record, between two of its textures. The movies
+send new textures every frame, so this game reaches the threshold in
+seconds; PC-ROA's movie must have reached it too, where the shifted record
+more likely ran the reader past the end of its block and lost the rest of a
+frame in silence. The flush is now decided before the record.
+
+**What runs.** The title screen with FMOD's music, the demo play with Bink's
+own sound, and back, for three minutes unattended (5,377 flips) and for the
+user, who watched the demo through.
+
+**The kit, checked on PC-ROA.** With these changes applied to its
+submodule and its game recompiled, PC-ROA ran unattended for five minutes
+at 30 frames (8,988 flips), through its logos and its whole opening movie,
+whose textures pass the flush threshold every few seconds, to its title. Its
+disc has no trophy package extracted: the empty set stood in, as declared.
+The played check (character creation, the town, the first quest) is still
+to do before the kit is pushed.
+
+**And past the title, played.** Start leads to character creation, with its
+music and its models (some with vertical lines of broken polygons), the
+parchment intro and NOW LOADING; then the first map, `Field_18.ps3.pac.gz`,
+goes to Edge zlib through a SPURS lock-free queue the kit does not have, and
+the game waits for it at 0 frames with its music playing: item 1.
 
 ## Session 14 - 2026-10-23
 

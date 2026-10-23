@@ -12,7 +12,7 @@ here, from `build/eboot.elf` as [`self.py`](../tools/self.py) writes it:
 ```
 python -m ps3kit.elf build/eboot.elf --imports --opd
 python -m ps3kit.ppu build/eboot.elf --mix
-python -m ps3kit.recomp build/eboot.elf --out build/recomp
+python -m ps3kit.recomp build/eboot.elf --out build/recomp --spu-module-bias 0x15670
 ```
 
 ## The shape
@@ -119,10 +119,18 @@ at all, which is the opposite of ROA, whose only SPU code was jobs.
 | `PS3_SPURS_BulletSolver_spu_release` | `00F8E780` | `0x3000` | 29,696 B | a SPURS task (Bullet solver) |
 | `fmodex_spu.elf` | `00F96580` | `0x80` | 66,880 B | FMOD Ex's mixer, *inferred* an SPU thread |
 | `fmodex` (NeuralTHX build) | `00FA8100` | `0x80` | 38,544 B | the same, another build |
-| 2 FMOD codecs, 17 FMOD effects | `00FB2780`... | relocated | | modules FMOD's mixer loads |
+| 2 FMOD codecs, 17 FMOD effects | `00FB2780`... | vaddr + `0x15670` | | modules FMOD's mixer loads |
 
-The 19 modules carry relocations (`.rela.text`): FMOD's mixer chooses where
-they go, so they have no address of their own and are not translated yet.
+The 19 modules carry relocation sections (`.rela.text` and others), but
+**every one of them is empty**: the code is position-independent, and FMOD's
+mixer copies a module into local store as it is, with only its `.fixup` words
+(data) patched. Where it goes was read off session 15's run: the PCM stream of
+the title music loaded `fmod_codec_raw` (its two segments, `0x2DC0` bytes)
+at LS `0x156F0`, its address `0x80` plus `0x15670`, and entered it at
+`0x15888`, its entry `0x218` plus the same. The recompiler translates all 19
+there (`--spu-module-bias 0x15670`); whether the effects go to the same place
+is for the run that first loads one to say: the runtime reports a module it
+finds elsewhere.
 That a task links at `0x3000` is the taskset policy module's layout; the
 "runs as" column is *inferred* from that and from the names, until the run
 confirms it.
@@ -213,4 +221,17 @@ started as an SPU thread group ("FMOD", `fmodex_spu.elf`) and its audio port
 fed; the `Water` SPURS instance with its `water_task` waiting on its event
 flag; the HDD free-space check passed; the save data looked for
 (`BLES00875SYSTEM`, `BLES00875GAME-DATA`) and not found; then a black screen,
-with the main loop running. That is where the next session starts.
+with the main loop running. That is where session 15 started.
+
+Session 15 (see [`TODO.md`](TODO.md)): the black screen was the boot
+sequence waiting for its trophies to install; with `sceNpTrophy` in the kit,
+the game writes its system save, checks its game data, and reaches the
+**title screen**: the logo over `TitleMovie_Omote_eu.bik`, with FMOD
+playing the title music; left alone, it plays the **demo play**,
+`PlayDemoMovieUS.bik` with its own sound on a second audio port, and comes
+back, for as long as it is left. Both are Bink movies, decoded by the
+game's own Bink on the PPU into three planes the renderer combines: what
+the frames show is recorded play. Played on, Start leads to character
+creation, the intro and NOW LOADING, and the first map waits for Edge zlib
+behind a SPURS lock-free queue (see [`TODO.md`](TODO.md), item 1). The extract needs the
+`trophy` set (`python tools/iso.py extract trophy`).

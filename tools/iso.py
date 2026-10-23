@@ -79,14 +79,17 @@ SETS: dict[str, tuple[tuple[str, ...], str]] = {
     'movie':     (('*.bik', '*.BIK'),         'filmati Bink'),
     'boot':      (('*/EBOOT.BIN', '*/PARAM.SFO'),
                                               'eseguibile e metadati (Fase 3)'),
+    'trophy':    (('*/TROPHY.TRP',),          'the trophy set, which sceNpTrophy installs'),
     'font':      (('*/Font/Font.bin',),       'metriche del font di interfaccia'),
     'devtool':   (('*.exe',),                 'utility Windows lasciate sul disco'),
 }
 
-# Non dichiarati apposta: PS3UPDAT.PUP (il firmware, 256 MB), TROPHY.TRP,
+# Non dichiarati apposta: PS3UPDAT.PUP (il firmware, 256 MB),
 # LICDIR/LIC.DAT, PS3LOGO.DAT, PS3_DISC.SFB - infrastruttura di piattaforma,
 # nulla che riguardi il gioco - e IconData/Thumbs.db, che e' una cache di
-# miniature di Windows finita sul master per distrazione.
+# miniature di Windows finita sul master per distrazione. TROPHY.TRP was
+# here too until session 15: the game waits for its trophies to install
+# before it leaves the boot checks.
 
 # Passi derivati: dopo l'estrazione, da un file se ne ricava un altro.
 # Sono parte del manifesto perche' senza di essi extract/ non e' completo.
