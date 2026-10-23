@@ -282,8 +282,9 @@ submodule and its game recompiled, PC-ROA ran unattended for five minutes
 at 30 frames (8,988 flips), through its logos and its whole opening movie,
 whose textures pass the flush threshold every few seconds, to its title. Its
 disc has no trophy package extracted: the empty set stood in, as declared.
-The played check (character creation, the town, the first quest) is still
-to do before the kit is pushed.
+Then the user played it on the same kit (character creation, the town, the
+first quest): all as before, 142 of 154 seconds at 30 frames, the drops at
+scene loads. The kit was pushed and PC-ROA's submodule moved to it.
 
 **And past the title, played.** Start leads to character creation, with its
 music and its models (some with vertical lines of broken polygons), the
