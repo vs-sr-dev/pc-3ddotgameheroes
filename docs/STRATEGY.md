@@ -1,205 +1,202 @@
-# PC-3Ddot — Strategia
+# PC-3Ddot — strategy
 
-*Allineato alla fine della sessione 12 (2026-08-19). Lo stato di dettaglio e le
-priorità stanno in [`TODO.md`](TODO.md); qui c'è solo l'impianto.*
+*Phases 1-5 aligned to the end of session 13 (2026-08-20); the pivot below
+to session 14 (2026-10-23). Detail and priorities live in
+[`TODO.md`](TODO.md); this document is the frame.*
 
-Decisione presa in Sessione 1 (2026-08-09): **reimplementazione nativa guidata
-dal Lua**. Costruiamo un motore PC che espone la stessa API di scripting e
-riusa gli script Lua originali *verbatim*. L'EBOOT PS3 serve come oracolo di
-riferimento, non come codice da tradurre.
+Goal: *3D Dot Game Heroes* (From Software / Silicon Studio, PS3, 2009), the
+European release BLES00875, running natively on PC **as the original game**.
+Distribution is BYOA: the player supplies their own disc, the repository
+ships code and documentation.
 
-Modello: Ship of Harkinian / OpenGOAL / devilutionX. Distribuzione BYOA.
+Since session 14 the road there is a **static recompilation** of the game's
+own executable onto a runtime that stands in for the PS3,
+[ps3kit](https://github.com/vs-sr-dev/ps3kit), shared with the sister
+project PC-ROA. Sessions 1-13 were a native reimplementation driven by the
+disc's Lua, and everything they read stays: see
+[the pivot](#the-pivot-static-recompilation-session-14).
 
-**Perché non la ricompilazione statica PPC64.** Su Xbox 360 funziona bene
-(XenonRecomp) perché la GPU è vicina a D3D9. Su PS3 l'RSX richiederebbe un
-livello HLE sostanziale, e il risultato sarebbe un binario opaco e non
-moddabile. Qui abbiamo un vantaggio che quella strada butterebbe via: il 100%
-della logica di gioco è già in sorgente leggibile.
+## The road taken in session 1, and why
+
+Decided in session 1 (2026-08-09): **a native reimplementation driven by the
+Lua**. A PC engine that exposes the same scripting API and reuses the disc's
+Lua scripts *verbatim*, with the EBOOT as a reference oracle, never as code
+to translate. The models were Ship of Harkinian, OpenGOAL and devilutionX.
+
+The reasons against static recompilation of the PPC64 executable, as this
+document gave them for thirteen sessions:
+
+> On Xbox 360 it works well (XenonRecomp) because the GPU is close to D3D9.
+> On PS3 the RSX would need a substantial HLE layer, and the result would be
+> an opaque, unmoddable binary. Here we have an advantage that road would
+> throw away: 100% of the game logic is already readable source.
+
+The next section is why they stopped holding.
+
+## The pivot: static recompilation (session 14)
+
+**The reimplementation had the logic for free and the engine to write, all
+of it.** After thirteen sessions the game was walkable in the viewer: maps
+with their inhabitants, the passages between them, dialogue, 312 of 312
+enemies running their own script, menus that navigate, map objects, the
+light the disc declares. What was left was the engine under the scripts:
+combat ("a subsystem that does not exist"), what a menu choice leads to (2
+links declared of 136), the 1xxx band of cells, the torches, and 108 of the
+161 actor methods the scripts call (20.8% of the calls). Each of those is a
+piece of an engine the disc does not ship as script, rewritten by hand one
+function at a time, which is the same bill the sister project PC-ROA had run
+up to 69,691 functions when it changed road in its session 33 (2026-10-11).
+A recompilation is the original by construction, and its questions are what
+the console does, which every PS3 game shares, not what this game does.
+
+**The three reasons above, measured on this EBOOT** (the census is in
+[`eboot.md`](eboot.md)):
+
+1. **"The RSX would need a substantial HLE layer."** It exists, in ps3kit,
+   and PC-ROA paid for it: a FIFO consumer, a renderer on OpenGL 4.5 that
+   translates the RSX's vertex and fragment programs to GLSL, textures,
+   surfaces, flips. Session 14 asked it for three things this game does and
+   ROA did not — the I/O map (`cellGcmMapEaIoAddress`), reports, and inline
+   image transfers through the FIFO, which is how this game puts its
+   fragment programs into local memory — and the publishers' logos, From
+   Software's and Silicon Studio's DAIKOKU and YEBIS, were drawn the same
+   day.
+2. **"The result would be an opaque, unmoddable binary."** Any recompiled
+   function can be replaced by C++ written by hand. And the game logic was
+   never the binary's: the scripts run on **the game's own Lua 5.1.3 VM**,
+   inside the EBOOT, instead of on ours (the host of sessions 1-13 used
+   Lua 5.5). One caveat, found in session 14 and still open: the EBOOT
+   carries its own copy of the scripts, 1,488 sources, 112 of them different
+   from the disc's `all.lua.eu`. In the first 90 seconds of a run the game
+   opens no `.lua.eu` from the disc. If it runs the copy in the executable,
+   modding the scripts means patching that copy, or redirecting the loader
+   to the disc's; *which one it runs is a measurement still to take*.
+3. **"We would throw away the advantage: 100% of the logic is readable
+   source."** Nothing is thrown away; it changes role. Everything sessions
+   1-13 read becomes documentation, BYOA tooling and **an oracle**: the
+   walkabout measures, the 312 enemies, the menus, the light are now things
+   to compare with the recompiled game running. The open questions (combat,
+   what a menu choice leads to, the 1xxx band, the torches) are answered by
+   the original itself.
+
+**The census said the same.** 20,672 PPU functions, a quarter of ROA's, in
+2.73 million instructions with almost no vector code (1,600 VMX
+instructions); 237 imports in 25 libraries, every one named; 77 lv2 call
+numbers; **638 switch tables, all resolved**. What this game has that ROA
+did not is the SPUs: **26 SPU ELFs** (Bullet's collision and solver, FMOD's
+mixer and its 19 effect and codec modules, Edge zlib, two water tasks) on
+SPURS task sets and an lv2 SPU thread group, where ROA had only SPURS jobs.
+That is what this game teaches the kit, as ROA taught it the PPU and the
+system.
+
+**What session 14 measured, running.** The recompiled game reaches its first
+flip, then draws the publishers' logos at 60 frames, with FMOD's SPU mixer
+running as an SPU thread group and a SPURS task (`water_task`) waiting on its
+event flag. To get there the kit learned: SPU ELFs recompiled at their load
+address, lv2 SPU thread groups, SPURS task sets, tasks and event flags,
+`spu_printf`, two switch-table shapes, the I/O map, reports, inline
+transfers, audio notifications, `/dev_flash` and `/dev_hdd1`. After the
+logos the game checks for its save data, finds none, and stays on a black
+screen: that is where session 15 starts. See [`TODO.md`](TODO.md).
+
+**How the kit is shared.** The kit grew inside PC-ROA and moved to its own
+repository, with its history, when this port started (session 14). It is a
+submodule at `ps3kit/` here and in PC-ROA, and it stays free of both games:
+what is this game's knowledge lives in this repository. The first piece of
+it is [`tools/flash.py`](../tools/flash.py), a declared stand-in for the
+system's MP3 decoder that FMOD reads from `/dev_flash`. Every change to the
+kit is checked on PC-ROA too, which must still reach its logos, movie,
+title, character creation, town and first quest at 30 frames.
+
+**The generated C++ is the game's code, translated, and is never
+committed.** It is built from the player's own disc, like everything else
+here.
 
 ---
 
-## Fase 1 — Fondamenta (nessun codice motore)
+## Phase 1 — Foundations (no engine code)
 
-Tutto analisi statica, tutto automatizzabile, nessuna dipendenza dall'EBOOT.
+All static analysis, all automatable, no dependency on the EBOOT.
 
-- **1a. Estrattore ufficiale.** ✅ **fatto** — `tools/iso.py`, lettore UDF
-  proprio (i Blu-ray PS3 usano la partizione di metadati di UDF 2.50, che
-  `pycdlib` non gestisce), set dichiarati, manifesto con `sha256` e verifica.
-  `extract/` e' ora una funzione del disco. Vedi [`extract.md`](extract.md).
-- **1b. Inferenza delle firme.** ✅ **fatto** — `tools/lua_signatures.py`.
-  497 metodi su 8 classi host, 29.626 call site; arità, tipo per posizione,
-  uso del ritorno. Output: `docs/lua_signatures.md` + `generated/script_api.h`.
-- **1c. Estrazione delle tabelle costanti.** ✅ **fatto** — `tools/lua_tables.py`.
-  12 enum / 2.216 membri (`generated/script_enums.h`), più la scoperta dei
-  descrittori UI dichiarativi — **136 caricati ed eseguiti** dalla sessione 9,
-  vedi [`ui.md`](ui.md). Solo `EventFlag` ha i valori: gli altri 11 enum sono
-  nativi, i valori arrivano con la Fase 3.
-- **1d. Clustering per dominio.** Raggruppare i 497 metodi in sottosistemi
-  (dialogo, camera, audio, entità, animazione, flag, mappa, UI) per stabilire
-  l'ordine di implementazione e stimare il lavoro. — *da fare*. Nota: `host.py
-  coverage` dà ormai il dato che serviva davvero — non quanti metodi esistono,
-  ma quanto sono chiamati.
-- **1e. Decoder del markup di dialogo.** ✅ **fatto** — censimento completo:
-  9 codici, nessun escape, linguaggio chiuso (RECON §6.4). Semantica certa per
-  `/r` `/b` `/co` `/cl`; la famiglia `/v*` resta un'ipotesi da confermare.
+- **1a. Official extractor.** ✅ **done** — `tools/iso.py`, a UDF reader of
+  its own (PS3 Blu-rays use UDF 2.50's metadata partition, which `pycdlib`
+  does not handle), declared sets, a manifest with `sha256`, and
+  verification. `extract/` is a function of the disc. See
+  [`extract.md`](extract.md).
+- **1b. Signature inference.** ✅ **done** — `tools/lua_signatures.py`. 497
+  methods on 8 host classes, 29,626 call sites; arity, type per position,
+  use of the return value. Output: `docs/lua_signatures.md` and
+  `generated/script_api.h`.
+- **1c. Constant tables.** ✅ **done** — `tools/lua_tables.py`. 12 enums,
+  2,216 members (`generated/script_enums.h`), and the declarative UI
+  descriptors, **136 loaded and run** since session 9 (see [`ui.md`](ui.md)).
+  Only `EventFlag` has its values in Lua; the other 11 enums are native, and
+  their values were left to Phase 3.
+- **1d. Clustering by domain.** The 497 methods grouped into subsystems to
+  order the work. — *not done*, and `host.py coverage` gave what was really
+  needed: not how many methods exist but how often each is called.
+- **1e. The dialogue markup.** ✅ **done** — a complete census: 9 codes, no
+  escapes, a closed language (RECON §6.4). `/r` `/b` `/co` `/cl` are certain;
+  the `/v*` family remains a hypothesis.
 
-## Fase 2 — Formati asset
+## Phase 2 — Asset formats
 
-Priorità dettata da cosa serve per il primo frame a schermo.
-
-| Formato | N | Priorità | Note |
+| Format | N | Status | Notes |
 |---|---|---|---|
-| `TPKG` texture | 763 | ✅ **risolto** | [`format_tpk.md`](format_tpk.md) — 4.033 texture, 0 errori |
-| `DPK` collisione | 171 | ✅ **risolto** | [`format_dpk.md`](format_dpk.md) — 171 file su 171 finiscono sull'ultimo byte, 301 mesh e 420.301 triangoli, stesso sistema di riferimento del `.pac` |
-| `DSBF` scene | 460 | ✅ **risolto** | [`format_dsb.md`](format_dsb.md) — 1,61 M triangoli da 460 file su 460, materiali e texture agganciati, skin e bind pose inclusi |
-| `.pac` mappe | 167 | ✅ **risolto** | [`format_pac.md`](format_pac.md) — 4.837 sezioni, 51,7 M vertici, stesso parser; **composizione** verificata contro la griglia logica, **99,3% delle celle solide** (il 90,7% di prima aveva nel denominatore mare e vuoto) |
-| `EDT` voxel | 90 | ✅ **risolto** | [`format_edt.md`](format_edt.md) — 90 file su 90 finiscono sull'ultimo byte, 260.860 voxel in un cubo 16×16×16; le sei parti sono sei pose |
-| `SAV` salvataggi | 3 | media | nessun magic, ma la stessa coppia `u32 len + UTF-8` degli `.edt`; riferisce i preset **per percorso** invece di incorporarli |
-| `MAP_ALIGNMENT` | 170 | ✅ **risolto** | [`format_mapdat.md`](format_mapdat.md) — griglia logica e grafo del mondo; il campo +0x10 è **l'attore**, che tiene insieme oggetti, nemici e NPC |
-| `spkg`/`CGB` shader | 4 | bassa | meglio riscrivere in GLSL/HLSL che tradurre Cg RSX |
-| Bink, WAV, DDS | 333 | risolti | ffmpeg / diretti |
+| `TPKG` textures | 763 | ✅ **solved** | [`format_tpk.md`](format_tpk.md) — 4,033 textures, 0 errors |
+| `DPK` collision | 171 | ✅ **solved** | [`format_dpk.md`](format_dpk.md) — 171 of 171 files end on their last byte, 301 meshes and 420,301 triangles, in the `.pac`'s frame of reference |
+| `DSBF` scenes | 460 | ✅ **solved** | [`format_dsb.md`](format_dsb.md) — 1.61 M triangles from 460 of 460 files, materials and textures linked, skins and bind poses included |
+| `.pac` maps | 167 | ✅ **solved** | [`format_pac.md`](format_pac.md) — 4,837 sections, 51.7 M vertices, the same parser; **composition** checked against the logical grid, **99.3% of solid cells** |
+| `EDT` voxels | 90 | ✅ **solved** | [`format_edt.md`](format_edt.md) — 90 of 90 files end on their last byte, 260,860 voxels in a 16×16×16 cube; the six parts are six poses |
+| `SAV` saves | 3 | open | no magic, but the same `u32 len + UTF-8` pairs as the `.edt`; they refer to presets **by path** |
+| `MAP_ALIGNMENT` | 170 | ✅ **solved** | [`format_mapdat.md`](format_mapdat.md) — the logical grid and the world graph; field +0x10 is **the actor** |
+| `spkg`/`CGB` shaders | 4 | not needed | the recompiled game loads them itself |
+| Bink, WAV, DDS | 333 | standard | ffmpeg / direct |
 
-## Fase 3 — EBOOT come oracolo
+## Phase 3 — The EBOOT
 
-Decrittare il SELF (`key_revision 0x0001`, chiavi retail pubbliche) verso ELF
-PPC64 big-endian e aprirlo in Ghidra. Serve per: semantica dei metodi ambigui,
-costanti del motore, uso effettivo delle SPU, e conferma dell'ipotesi OROCHI.
-Non blocca la Fase 1 né la Fase 2.
+Planned as an oracle, never opened in thirteen sessions, and **opened in
+session 14** as the input of the recompiler instead: [`format_self.md`](format_self.md)
+(the container, with [`tools/self.py`](../tools/self.py)) and
+[`eboot.md`](eboot.md) (the program). Its first readings answered two items
+this phase had been keeping: the post-processing is Silicon Studio's
+**YEBIS**, which the game itself shows on its logo screen beside
+**DAIKOKU**, its shader pipeline; and no string in the binary names OROCHI,
+so the engine hypothesis of session 1 stays a hypothesis. The engine's own
+source tree is called `Block` (`c:/work/Block/Localize/program/src/...`).
 
-**Non è ancora stata toccata in nove sessioni.** Fino alla settima non c'era
-mai stata una vera ragione per aprirla: ogni volta che qualcosa sembrava
-richiederla, era sul disco in chiaro. Adesso ce ne sono **due**, tutte e due
-cercate in tutti i posti in chiaro e non trovate:
+The method note this phase carried still holds: several things deferred here
+turned out to be on the disc in the clear (the direction values, the
+archetype-to-model table, the enemy placement, the screens' input). Before
+reading code, ask whether the fact is already declared, even in a file name.
 
-- il **pattugliamento dei nemici** (sessione 8) — pose e periodo si leggono dai
-  dodici attori Lua del minigioco, il moto no;
-- il **seguito di una schermata** (sessione 9) — quale schermata segue una
-  scelta è dichiarato 2 volte su 136.
+## Phase 4 — Host (sessions 1-13)
 
-Nota utile per quando si aprirà: i file `DSBF` sono immagini di memoria scritte
-con `memcpy` di struct C++, quindi **le stesse struct saranno riconoscibili in
-Ghidra** e daranno i nomi dei campi finora dedotti.
+The Lua host that ran the disc's scripts verbatim, now an oracle for the
+recompiled game:
 
-**Nota di metodo, pagata più volte.** Diverse cose sono state rimandate a questa
-fase e poi trovate sul disco in chiaro: i valori delle direzioni (li dicono gli
-script confrontando chi si gira con chi cammina), la tabella archetipo →
-modello (la dicono i nomi dei 237 file `npcevent_n<NN><archetipo><id>`), il
-piazzamento dei nemici (lo dichiara la griglia, cella per cella) e l'input
-delle schermate (lo dichiarano i descrittori, tranne l'avvolgimento del
-cursore). Prima di rimandare qui, conviene chiedersi se il dato non sia già
-scritto da qualche parte — anche in un nome di file.
+- the Lua VM (`lupa`, Lua 5.5): **377 of 378 event scripts run to their
+  end**, with 43 methods covering 87% of the 6,634 calls. See
+  [`host.md`](host.md);
+- the entity registry ([`entities.md`](entities.md)), the game loop
+  ([`walk.md`](walk.md)), the enemies in the map (10,196 placements, 312 of
+  312 running their script, [`actor.md`](actor.md)), the system screens
+  ([`ui.md`](ui.md)), the coroutine scheduler, the interface font, the
+  package manager's 1,279-line symbol table and the map objects
+  ([`objects.md`](objects.md)), and the viewer with the YEBIS post-processing
+  rebuilt from its vendor's description ([`render.md`](render.md),
+  [`renderer.md`](renderer.md)).
 
-## Fase 4 — Host
+The milestones it reached, each one now a comparison to make against the
+original running: **"the first dialogue"** (session 3), **"the scene"**
+(session 4), **"the game loop"** (session 5, measured by `view.py walkabout`:
+97% of inhabitants reached, 365 of 369 passages with a standable arrival).
 
-- VM Lua — ✅ **fatto**, `lupa` (Lua 5.5): **377 script di evento su 378
-  girano, 377 arrivano in fondo, 0 errori**, e l'host copre l'**87% delle
-  6.634 chiamate** del corpus con 43 metodi. Vedi [`host.md`](host.md)
-- **Registro delle entità** — ✅ **fatto**, `tools/entity.py`: posizione,
-  direzione, posa, movimento nel tempo; 72 nomi su 99 collocati e 66 su 99 con
-  il modello che il disco dichiara. Vedi [`entities.md`](entities.md)
-- **Giro di gioco** — ✅ **fatto**, `tools/walk.py`: camminare di cella in
-  cella, i passaggi fra mappe con il loro punto d'arrivo, gli abitanti che una
-  mappa dichiara (225 su 236 con nome, modello e dialogo). Vedi
-  [`walk.md`](walk.md)
-- **I nemici in mappa** — ✅ **fatto** (sessione 8): la griglia ne piazza
-  **10.196**, uno per cella, con la specie nel campo +0x10 e il set di
-  piazzamento in `-sA`…`-sH`. `A`,`B`,`C` sono tre disposizioni alternative
-  della stessa popolazione; `F`,`G`,`H` le stesse per FROM Mode, e lì i nemici
-  da sotterraneo in campagna passano dallo 0,5% al 34,8%. Vedi
-  [`entities.md`](entities.md)
-- **Le schermate di sistema** — ✅ **fatto** (sessioni 7 e 9), `tools/ui.py`:
-  136 descrittori caricati ed eseguiti, composti dalla propria scena, e
-  **navigabili** — 23 blocchi per 60 voci, il tasto che sceglie e quello che
-  annulla, le pagine dei piani. Vedi [`ui.md`](ui.md)
-- **Scheduler a coroutine** — ✅ **fatto**: ogni evento è una coroutine ripresa
-  per frame, `Event:Wait()` / `:WaitContinue()` / `:WaitScene()` sono i tre
-  punti di sospensione che bastano all'intero corpus
-- Font di interfaccia — ✅ **fatto**, `tools/font.py`
-- **Package manager** (`gPackageManager:addNodeListElement`) — ✅ **fatto**
-  (sessione 12), `tools/nodes.py`: **1.279 righe** che mandano ogni costante
-  nativa sul nome del proprio nodo, cioè la tavola dei simboli del disco.
-  99,1% dei nodi dichiarati esiste in un `.dsb`, 98,2% delle costanti che gli
-  script passano ad `AddNode` è dichiarata. Conferma le rubriche di sessione 4
-  e 8 e ne corregge due caselle. Da lì gli **oggetti di mappa**: la cella li
-  nomina con `4000 + m_obj_NN` e adesso si disegnano — 7.695 celle su tutto il
-  disco. Vedi [`objects.md`](objects.md)
-- Renderer — il ponte fra i formati e lo schermo esiste gia' come strumento di
-  verifica: `tools/view.py` + `tools/post.py`, vedi [`render.md`](render.md).
-  Disegna il 100% della geometria del disco (54,1 M vertici) texturizzata, con
-  la catena di post-processing YEBIS ricostruita dalla descrizione del
-  fornitore e parametrizzata dalle 202 chiamate DOF del Lua. Manca il modello
-  d'illuminazione vero e il resto di [`renderer.md`](renderer.md).
+## Phase 5 — Bring-up
 
-**Milestone "primo dialogo"** — ✅ **raggiunta** (sessione 3). Mappa `field_16`
-dal `.pac`, `Event/Devil/Devil.lua.eu` eseguito verbatim su VM Lua, e la sua
-battuta a schermo col font del gioco:
-
-```
-python tools/view.py extract/pac/field_16.ps3.pac \
-    --event extract/.../Event/Devil/Devil.lua.eu --skip 14
-```
-
-La tesi del progetto — riusare gli script originali invece di tradurli — è
-verificata, non più solo argomentata.
-
-Il dialogo è completo di scelte: `Select` / `GetSelect` funzionano e il
-riquadro usa la cornice vera del gioco.
-
-**Milestone "la scena"** — ✅ **raggiunta** (sessione 4). Un evento gira sulla
-**sua** mappa, composta per intero, con i **suoi** personaggi al posto e nel
-modello che il disco dichiara, nell'inquadratura che lo script sceglie:
-
-```
-python tools/view.py extract/.../map/pac_data/D_8_2.ps3.pac.gz \
-    --event extract/.../Event/mapevent/mapevent_d08_02.lua.eu --skip 40
-```
-
-Quello che l'ha resa possibile non era un metodo dell'API ma un **sistema di
-riferimento**: la cella logica vale 1,6 come l'altezza di un personaggio, le
-sezioni di un `.pac` sono schermi da comporre, e gli script parlano con
-l'origine a un angolo. Vedi [`entities.md`](entities.md) e
-[`format_pac.md`](format_pac.md).
-
-**Milestone "il giro di gioco"** — ✅ **raggiunta** (sessione 5). Si sta su una
-mappa con i suoi abitanti, si cammina di cella in cella, si attraversa un
-passaggio e si arriva nell'altra mappa nel punto che il disco dichiara, si
-parla con chi si ha davanti:
-
-```
-python tools/view.py play field_91
-```
-
-È la prima cosa del progetto che si **gioca** invece di guardarla: il punto
-d'arrivo viene dalla cella `Exit` dell'altra mappa, il dialogo dallo script
-`npcevent_*` dell'abitante, il muro da `MAPCOLLISION/*.DPK`. E ha portato con sé
-la misura che mancava — `view.py walkabout` percorre a piedi tutte le 170 mappe.
-
-Camminare ha anche chiuso la Fase 2 su un formato rimasto in sospeso e
-corretto un numero inventato: il `.DPK` si è risolto al primo tentativo, e il
-gradino che un personaggio sale non è «un ginocchio» ma **una casella**, come
-tutto il resto di questo gioco.
-
-Il valore corrente della misura, dopo le correzioni di sessione 6 (colonna
-misurata invece che assunta, fondale sepolto, tutte le porte d'ingresso):
-
-```
-python tools/view.py walkabout
-
-celle raggiunte a piedi         67%
-abitanti raggiunti              97%      (il numero che conta)
-passaggi con l'arrivo in piedi  365/369  = 99%
-```
-
-Il 67% delle celle non è un fallimento del 33%: il denominatore conta anche i
-tetti e le cime dei muri, che infatti non si devono raggiungere.
-
-## Fase 5 — Bring-up per aree
-
-**È dove siamo.** Sottosistema per sottosistema, usando gli script come suite
-di test: uno script che gira senza chiamare metodi non implementati è un
-sottosistema completo.
-
-Il confine non è più «cosa manca al sistema» ma «quanto del mondo regge quando
-ci si cammina dentro», e la misura che lo giudica è `walkabout`. Le priorità
-correnti stanno in [`TODO.md`](TODO.md), che è il documento da leggere per
-primo a inizio sessione.
+Since session 14, bring-up is the recompiled game's: screen by screen, each
+stop read and resolved in the kit (what the console does) or in this
+repository (what this game does). The scripts are no longer a test suite for
+our host; the readings of sessions 1-13 are the checks to run against the
+original. The priorities are in [`TODO.md`](TODO.md), the first document to
+read at the start of a session.

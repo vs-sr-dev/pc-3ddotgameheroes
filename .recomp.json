@@ -1,0 +1,12 @@
+{
+  "$schema": "https://recomp.fyi/schema/v1.json",
+  "game": "3D Dot Game Heroes",
+  "system": "PS3",
+  "type": "recomp",
+  "toolchain": "ps3kit",
+  "status": "in-progress",
+  "targets": [
+    "Windows"
+  ],
+  "approach": "static recompilation on ps3kit (a submodule), after thirteen sessions of a native reimplementation driven by the disc's Lua"
+}

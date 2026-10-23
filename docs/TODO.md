@@ -1,294 +1,428 @@
-# PC-3Ddot — prossimi passi
+# TODO
 
-Aggiornato: 2026-08-20, fine della sessione 13.
-Stato generale in [`STRATEGY.md`](STRATEGY.md), ricognizione in
-[`RECON.md`](RECON.md).
+*Read this first at the start of a session. The frame is in
+[`STRATEGY.md`](STRATEGY.md), the executable in [`eboot.md`](eboot.md), the
+disc survey in [`RECON.md`](RECON.md).*
 
-## Da fare la prossima volta
+---
 
-**La banda 1xxx**, che è la sola delle quattro numerazioni di cella ancora
-chiusa. 8.053 celle, 38 numeri da 1 a 51, l'85% in campagna. In sessione 13 il
-campo si è ristretto, ma **per esclusione**: non è `1000 +` il numero di un
-nodo (miglior copertura 71%, e nessuna famiglia arriva a 51), non è un indice
-locale alla mappa (gli stessi numeri ricorrono su mappe diverse, e ogni mappa ne
-usa in mediana 4), non è il bordo di uno schermo (29% contro il 21% del caso).
+# Next session
 
-L'indizio da cui ripartire è **la forma**: le celle di uno stesso numero
-disegnano figure, e non oggetti sparsi. In `D_24_3` il 21 fa la cornice della
-mappa su tutti e quattro i lati, in `D_23_1` una colonna per tutta l'altezza,
-in `field_16` il 41-42-43 stanno in filari a due o tre celle di passo. Somiglia
-a un **contorno**, e le famiglie che il disco tiene per i contorni adesso hanno
-un nome: 崖 la rupe (`f_gke`, 62 voci), 段差 il dislivello, 壁 il muro.
+**Session 14 changed road and reached the logos.** The project is now a
+static recompilation of the game's own executable on
+[ps3kit](https://github.com/vs-sr-dev/ps3kit), which left PC-ROA for its own
+repository the same day and is a submodule here. The recompiled game reaches
+its first flip and draws its four logo screens at 60 frames (ATLUS, FROM
+SOFTWARE, DAIKOKU and YEBIS), with FMOD's SPU mixer running as an lv2 SPU
+thread group and a SPURS task waiting on its event flag. Then it checks for
+its save data, finds none, and stays on a black screen with its main loop
+running.
 
-E la misura contro la collisione dice **che la banda è doppia**: quanto spesso
-una cella sta a ridosso di un gradino va dall'**86%** (numero 1) al **14%**
-(numero 42), con la media di mappa al 33%. Chi sta sul gradino tre volte più
-del caso e chi ci sta meno della metà non sono la stessa specie di cosa.
-Quindi la domanda non è più «qual è la regola» ma **separare le due bande e poi
-cercarne due**. Tutto in [`objects.md`](objects.md).
+Where it stands:
 
-**Cosa misura l'intervallo di `+0x08`** — da riprendere dal Lua.
+- **Decryption**: [`tools/self.py`](../tools/self.py), ported from PC-ROA;
+  [`format_self.md`](format_self.md).
+- **Census**: [`eboot.md`](eboot.md). 20,672 functions, 237 imports all
+  named, 638 switch tables all resolved, 26 SPU ELFs.
+- **The kit, for this game**: SPU ELFs recompiled at their load address,
+  lv2 SPU thread groups, SPURS task sets, tasks and event flags on a kernel
+  of the runtime's own, `spu_printf`, the RSX's I/O map, reports and inline
+  transfers, audio notifications, `/dev_flash`, `/dev_hdd1`. Committed in
+  the kit, **not yet pushed** (item 6).
+- **This repository's own knowledge so far**: `tools/flash.py`, a declared
+  stand-in for the system's MP3 decoder, which FMOD reads from
+  `/dev_flash` and which the disc does not carry.
 
-**Le torce** — 859 celle di `m_obj_99`, e nei sotterranei l'illuminazione è
-tutta d'ambiente. La voce resta, ma **le tre strade che il disco poteva offrire
-sono state provate e sono chiuse**, quindi chi la apre sa già che dovrà
-dichiarare qualcosa come proprio:
+The commands are at the end of [`eboot.md`](eboot.md).
 
-- il materiale della fiamma non ha emissione. `Torch.ps3.dsb` *è* `m_obj_99`,
-  con `m_obj_99_a` il supporto (`wall_01`) e `m_obj_99_b` la fiamma
-  (`fire_01`, texture `Fire_01.dds`): emissione `0, 0, 0`. Ce l'hanno le lame
-  magiche e le sfere, non lei;
-- `setPointLight` è degli eventi, non delle mappe: le sue due chiamate mettono
-  una luce a `(77.5, 1.51, -102.5)` per la fatina di una scena, e
-  `pointLightOff` la spegne;
-- nel `.pac` di una mappa non c'è **nessun** record `light`.
+### 1. The black screen after the save-data check.
 
-Resta la posizione, che si sa (sono le celle), e restano i **record `effect`**
-— tipo 4, 1.792 sul disco, mai decodificati: `Torch.ps3.dsb` ne ha due per due
-materiali, e se un `-fx` dichiara il modo di fondere la fiamma, quello è il
-posto. È l'unico caso finora in cui il dato tace e l'occhio dice il contrario.
+After `cellSaveDataListAutoLoad` for `BLES00875SYSTEM` and
+`BLES00875GAME-DATA` (both answered "no data": the game's callback says so),
+the game draws 8 draws a frame on black, opens no file, calls no stub, and
+its main thread spends nearly all its time in the frame-pacing sleep of
+`0x2A438`. Nothing waits on a lock (the kit now names any lightweight-mutex
+wait over five seconds). Pressing Start or cross changes nothing.
 
-Restano il combattimento (un sottosistema che non c'è) e, per la Fase 3, la
-sola voce rimasta: il seguito di una schermata.
+Leads, cheapest first: the game's TTY (stdout) for its own messages; the
+calls `0x473E8C` (`cellSysCacheMount`, now implemented, not reached yet),
+`cellGameDataCheck` and `cellGameCreateGameData` (0x525340, 0x52CD08: the
+HDD install the free-space check was about, 871 MB, which the disc's
+`HDDInstallList.lua.eu` lists); the second SPURS instance at `0x5CF000`,
+whose PPU thread waits on an event flag; and the state machine around
+`0x2A438`, read off the recompiled game with `gdb_trace.py`.
 
-## In due righe
+### 2. Which copy of the scripts the game runs.
 
-**Si gioca.** Si sta su una mappa con i suoi abitanti, si cammina di cella in
-cella, si attraversa un passaggio e si arriva nell'altra mappa dove il disco
-dice, si parla con chi si ha davanti — e un cartello sopra la testa dice dove
-premere — e risponde con il suo dialogo, nel riquadro del gioco. Nei
-sotterranei si apre la mappa del piano.
+The EBOOT carries 1,488 Lua sources, 112 different from the disc's
+`all.lua.eu` (see [`eboot.md`](eboot.md)). In 90 seconds of boot no
+`.lua.eu` is opened. Find the loader (the `-- Start` / `-- End` markers, or
+the Lua 5.1.3 `lua_load` it calls) and see where its chunks come from. The
+answer decides how the scripts are modded.
 
-Dalla sessione 8 il mondo ha anche **i suoi nemici**, che il disco piazza cella
-per cella: nel tempio dell'erba si incontrano due Scorpion e un Soldier Bones,
-e cambiando set di piazzamento sono gli stessi, in altri posti. Dalla sessione
-11 **si muovono da soli**, eseguendo lo script che il disco porta per ognuno:
-gli scorpioni pattugliano, gli spuntoni scorrono avanti e indietro e caricano
-quando ti allinei. E con loro gli abitanti, che gironzolano per la corte —
-tranne il Re e i saggi, che il disco lascia fermi non scrivendo la `Update`.
+### 3. SPURS queues, lock-free queues and the barrier.
 
-Dalla sessione 9 **le schermate si navigano**: le voci, il cursore, il tasto
-che sceglie e quello che annulla stanno sul disco, e adesso rispondono.
+They answer `CELL_OK` and do nothing (the kit's README says so). Edge zlib's
+inflate queue (`0x69C000`) and Bullet (`0x955000`) need them. RPCS3 has no
+implementation to read (it runs the firmware's library); the layouts are in
+the SPU side of the protocol, which is the tasks' own code
+(`edgezlib_inflate_task`, the two Bullet tasks), and RPCS3 notes that
+`CellSpursLFQueue` is a `CellSyncLFQueue`. Read the task's side, then write
+the PPU's, as the event flags were done in session 14.
 
-E dalla sessione 12 il mondo ha **le sue cose**: forzieri, cartelli, torce,
-pozzi, l'erba che si taglia, le colonne delle corti, le lapidi dei boss e i sei
-altari delle sfere — 7.695 celle su tutto il disco, ognuna col modello che il
-disco le assegna.
+### 4. FMOD: the real decoder and the 19 modules.
 
-E dalla sessione 13 **si vede**: la luce di una mappa non è più una nostra
-lampada puntata da 42 gradi di azimut, è quella che i vertici della mappa già
-portano — e dove non la portano, quella che il disco dichiara nelle proprie
-chiamate. In campagna metà schermo stava sotto 0,15 di luminanza; ora è il 6%.
-E le cose che brillano brillano: le ventun lame magiche, ognuna del colore che
-il suo materiale dichiara, e le sfere degli altari.
+- `flashMP3.pic` is in the firmware update on the disc (`PS3UPDAT.PUP`,
+  3.15), in an encrypted package. Reading it would replace the stand-in with
+  the player's own file; until then MP3 decoding is absent, which this disc
+  does not use (it has no MP3).
+- FMOD's 2 codecs and 17 effects are relocatable SPU modules its mixer
+  loads where it chooses. When it first does, the address can be read off
+  the run (`PS3KIT_SPU_DMA=1`) and the modules recompiled for it.
 
-Nella stessa sessione i nemici hanno preso **il passo che il disco gli dà**: il
-ciclo di pose non è più dedotto dai suffissi `_a`/`_b` ma letto da
-`AddAnimation`, e i goblin camminano a quattro tempi.
+### 5. A glitch in the game's own text.
+
+The free-space message drew its number with the digits overlapping
+("8 7 1 M|6 9s2 0e2ded"). The text is the game's (`Font.bin` and the font
+textures), drawn by its code: a draw or a texture state the renderer gets
+wrong. Look at it when a screen with text comes back.
+
+### 6. The kit: check it on PC-ROA, then push.
+
+PC-ROA, rebuilt on the kit of session 14, reaches its logos, its movie and
+its title at 30 frames in an unattended run. Character creation, the town
+and the first quest have to be played: once they are, push `ps3kit` and
+move PC-ROA's submodule to it.
+
+### 7. The tools still speak Italian.
+
+The documents are in English since session 14; the Python tools' docstrings,
+comments and messages are not, and several documents quote their output
+(already in English). `tools/api_domains.py` writes `api_domains.md` and
+would bring the Italian back if run.
+
+### Alongside, every session.
+
+- **Every kit change checked on PC-ROA**, which must keep reaching its logos,
+  movie, title, character creation, town and first quest at 30 frames.
+- **The kit stays free of both games.** What is this game's knowledge lives
+  here (`tools/`, and a port layer when one is needed).
+- **Every invention declared**: the kit's in its README's known
+  approximations, this repository's at its site and here.
+- **Nothing generated is committed.** `build/` holds the ELF and the C++.
+- **Read others' work, write our own.** RPCS3's sources are read for what
+  the system does, never copied.
+
+## The readings of sessions 1-13, as checks on the original
+
+What used to be work to do is now a measurement to take on the recompiled
+game, or a question it answers by itself:
+
+- **`walkabout`**: 97% of inhabitants reached, 365 of 369 passages with a
+  standable arrival ([`walk.md`](walk.md)). Walk the same maps in the game.
+- **The enemies**: 312 of 312 running their own script, 10,196 placements,
+  the patrols and the pose cycles ([`actor.md`](actor.md),
+  [`entities.md`](entities.md)). Compare a room's enemies with the viewer's.
+- **The menus**: 136 descriptors, 23 blocks and 60 items, and what a choice
+  leads to, which the disc declares twice in 136 ([`ui.md`](ui.md)). The
+  game now answers the second part itself.
+- **The 1xxx band of cells**: two bands, by elimination; the forms, a
+  contour ([`objects.md`](objects.md)). Look at what stands on those cells.
+- **The torches**: 859 cells of `m_obj_99`, no emission in the material, no
+  `light` record; the `effect` records (type 4, 1,792) never decoded. See
+  how the game lights them.
+- **The light**: baked into the vertices, the sky's direction, the
+  overworld against indoors ([`renderer.md`](renderer.md)). Compare frames.
+- **`+0x08` of the grid**: a byte pair, `b1 >= b0` in 482,180 cells of
+  482,180, with `+0x0C = 1 << b0`.
+- **Combat**: never written; the original has it.
+- **The `SAV` saves**, the gimmicks of `Object/gimmick/`, the 41
+  non-conversational event scripts (1 of 378 did not reach its end), the
+  developer utilities on the disc (`MakeLuaDump.exe`), the unnamed material
+  fields and the `skin` record's minor fields: questions the running game
+  can answer when they matter.
+
+## Deferred, with reasons
+
+- **The disc-key layer.** The ISO is already decrypted (3k3y form); the
+  disc-key decryption stays a teaching module for a physical disc.
+- **Phase 1d** (clustering the 497 methods by domain): `host.py coverage`
+  gave what was needed, and the recompiled game makes it moot.
+
+## Open, unowned
+
+**Inconsistencies the English rewrite found** in the documents of sessions
+1-13, reported by the rewriters and left as they were written, to be
+settled when someone next works in each document:
+
+- `ui.md`: twenty dungeon maps against 21 floors; 319 of 358 strings
+  mangled against 432 placed; 38 pieces parked off screen against 15 that
+  slide; the cursor check's 30 items against 60.
+- `walk.md`: `destructionWall` 46 against 45; `npcevent` 243 against 237;
+  the walkabout block's 68% / 66% against the prose's 63% / 63%; "96% of the
+  enemies have floor" against 546 of 10,196 without (5.4%); a stale "no
+  cell declares the enemies"; Block Defence's 12, 22 and 34 actors; rooms
+  404 of 413 against 305 of 416; nine bosses against eight.
+- `objects.md`: `4060` labelled the chest and later proved the jar; twelve
+  missing nodes, eight listed; the altars "in the same cell" but `D_1_3` at
+  (7,4); 263 against 266 NPC files; the `AddColor`/`SetAmount` file counts;
+  the overworld lists of 21 and 14 against `f_hmw` 28 and `f_ntr` 17.
+- `actor.md`: "What is missing" stale after session 13 (98 methods, 27.3%,
+  `AddAnimation` listed); `Troupe` still loading 869 sources, not 1,486;
+  "ten enemies" against seven models.
+- `entities.md`: 14,099 object cells against `objects.md`'s 11,924; the
+  family table sums to 178 of 184 roots.
+- `format_pac.md`: "until session 3" against "until session 4"; 91.2% in no
+  measurement; the "still to clarify" 25.6/112 already explained; 40 overworld
+  maps against 39 at 16×16; water and void 104,864 against `format_mapdat.md`'s
+  96,441.
+- `format_dpk.md`: 30.9 million triangles is the whole disc, models
+  included, not the maps alone.
+- `format_dsb.md`: the "common header" is 16 bytes in one place and 112 in
+  another.
+- `format_edt.md`: the 0x36 / 0x30 example of odd-length strings does not add
+  up.
+- `RECON.md`: "those 501 methods" against 497; `BackupDof` 526 against 524
+  calls; 12 enums and 2,216 members against a table of 11 summing to 2,201;
+  `SoundID` defined in Lua and native; 2,639 string literals against 2,747
+  full-width strings; the font "fixed-width" against `host.md`'s proportional.
+- `renderer.md`: the `ubyte4` still "unknown", while `render.md` names it the
+  bone index.
+- The log below: the session numbers some sections sit under (water drawing
+  and the system screens under session 3); `SetPlayerPosition` unsolved and
+  solved in session 4; the Field_16 sea at −2.0, not a multiple of 1.6.
+
+---
+
+# Log
+
+## Session 14 - 2026-10-23
+
+**The pivot, the kit's own repository, the docs in English, and the logos.**
+
+The day began with the brief's plan: rethink the strategy on this EBOOT's
+numbers, as PC-ROA had done in its session 33, and act on it.
+
+**The repositories.** PC-ROA was brought level with GitHub (a rebase over
+the remote's README fix, then a push). `ps3kit/` was split out of it with
+its history (`git subtree split --prefix=ps3kit`, 15 commits) into
+[vs-sr-dev/ps3kit](https://github.com/vs-sr-dev/ps3kit), with a licence and
+line-ending rules of its own, and came back as a submodule in PC-ROA and
+here. This project became a git repository: a first commit keeps sessions
+1-13 as they stood, in Italian.
+
+**The documents in English.** Every format and subsystem document was
+rewritten in English (seven writers in parallel, each given the same brief:
+rewrite, keep every fact, mark what is inferred). They reported 50-odd
+inconsistencies in the originals, listed above under *Open*. The disc's
+title id was wrong in the manifest's header and `extract.md`: BLES-00860, an
+id the disc does not carry; PARAM.SFO says BLES00875.
+
+**The EBOOT, decrypted and counted.** `self.py` came over from PC-ROA, minus
+ROA's own `names` command, and decrypted the SELF in 44 seconds with
+`key_revision 0x0001`'s APP keys ([`format_self.md`](format_self.md)). The
+census confirmed session 33's numbers (20,672 functions, 26 SPU programs) and
+added the rest ([`eboot.md`](eboot.md)): 237 imports all named, 112 of them
+new to the kit; 77 lv2 call numbers; almost no vector code; **3.78 MB of the
+game's Lua inside the executable**, 112 sources of 1,488 different from the
+disc's; Lua 5.1.3, FMOD Ex, Bink, Bullet, Edge zlib; the engine's source tree
+called `Block`.
+
+**The recompiler, on a second game.** Eleven switch tables did not resolve:
+their bound check sits in a block reached by a branch, after a return, and
+the search for it crossed into other code. Following the branch back to its
+source fixed all eleven, and corrected ten tables that had resolved with a
+wrong bound. Then 22 more from unoptimised code, which loads the entry with
+`lwz` from a sum instead of `lwzx`. 638 of 638; PC-ROA's 379 tables and
+76,652 entries came out identical before and after.
+
+**The SPUs.** The recompiler now finds SPU ELFs by their header and
+translates each at its load address: five SPURS tasks at `0x3000`, FMOD's two
+mixers at `0x80`, and lists the 19 relocatable FMOD modules it cannot place.
+Bullet's 43,448-instruction task kept clang busy for more than ten minutes
+with a dispatch case per instruction; with cases only where an indirect
+branch can land (588) the whole build takes three and a half minutes. The
+runtime gained lv2 SPU thread groups (`sputhread.cpp`) and a SPURS kernel of
+its own (`spurs.cpp`): task sets, tasks on host threads, the task syscalls
+through `0xA70`, exit codes, event flags in the system's layout, and
+`spu_printf`. The water task told us twice what was wrong, through its own
+`spu_printf`: `cellSpursEventFlagWait failed : 80410911` (the task had no
+argument: `_cellSpursTaskAttributeInitialize`'s signature, which RPCS3 does
+not know, was read off the call site instead), then `: 8041090f` (a task
+that blocks checks its context save area and LS pattern; the task info now
+holds them as the system's library writes them). Then it waited, as it
+should.
+
+**From the first flip to the logos**, each stop read and resolved: the
+primary thread's priority was reported as 0 (a kit bug: the game wants
+`prio - 1` for SPURS and exited cleanly when it was negative); the I/O map
+(`cellGcmMapEaIoAddress` at offset `0x0E000000`, where libgcm keeps
+main-memory reports); `sys_time_get_timebase_frequency`; the system
+parameters; the fragment programs, which the game puts into local memory
+with inline image transfers through the FIFO (NV308A into NV3062): with them
+the first draw went through, and the logos appeared. Then FMOD: the sound
+availability query, the MP3 decoder read from `/dev_flash` (a stand-in,
+`tools/flash.py`), the audio notifications, and its SPU mixer started as a
+thread group; the free space on the HDD (the game asked for 871 MB, and drew
+its own message when it had none); the system cache. EISCONN and ENOTCONN had
+had ESTAT's and EALIGN's values in the kit since ROA.
+
+**And where it stops.** After the save-data check, a black screen with the
+main loop running: item 1.
+
+## Session 13 - 2026-08-20
+
+Four TODO items, taken in order: the lighting, the 1xxx band, `AddColor`,
+`AddAnimation`. Three closed. The 1xxx band did not, but three roads into it
+are now shut and the question has been put better.
+
+The TODO asked for the lighting and said where it belonged: in `renderer.md`,
+not in the Lua host. It was right about the place and wrong about the
+diagnosis. "The baked light is ~1.5× brighter than the declared colour and we
+turn it off" takes for granted that our light and the data's are the same
+thing on two scales. They are not: ours had **a direction the data does not
+have**. All of it is in [`renderer.md`](renderer.md).
+
+### The right question was: does the disc declare the light?
+
+Twice no, and that is the useful part:
 
 ```
-python tools/view.py play field_91        la corte del castello, 33 abitanti
-python tools/view.py play d_6_1_3 --map   il tempio del vento, con la mappa
-python tools/view.py play d_1_1_1 --cell 39,18          i nemici, disposizione A
-python tools/view.py play d_1_1_1 --cell 39,18 --spawn C   gli stessi, altrove
-python tools/view.py play field_16 --spawn F            la campagna in FROM Mode
-python tools/view.py play d_1_1_1 --cell 39,18 --skip 6  la stanza dopo 6s di vita
-python tools/view.py play field_91 --skip 8            la corte, con chi ci vive
-python tools/view.py walkabout            la misura, su tutte le mappe
-python tools/actor.py census extract      quanto dei nemici sappiamo eseguire
-
-python tools/ui.py drive Pause giu,giu,giu,croce out.png   il menu di pausa
-python tools/ui.py menus Title             le voci, e cosa spiegano
-python tools/ui.py keys EnemyAlbum         quali azioni, con che tasto
-python tools/ui.py floors 5                i piani, col loro nome
-
-python tools/view.py play d_60_3 --cell 11,13   il pozzo, col suo cartello
-python tools/nodes.py census               la tavola dei simboli del disco
-python tools/nodes.py props                gli oggetti di mappa, per id
-python tools/view.py light                 quanto cielo vede ogni mappa
+`light` records in the 167 map .pac         0
+`light` records on the whole disc         400   one per file
+  named `ambient-environment-light`       399
+  40-degree cone, decay +inf          400/400
 ```
 
-## Dove siamo
+Forty degrees and infinite decay are the exporter's defaults. The colour
+confirms it by contradiction: 336 are white and 62 the same beige, and the 62
+make no sense as a set from the game — eight bosses, seven dungeon interface
+maps, `NameEntry`, `Option`. It is the working environment of whoever did the
+export. And `MapParameter`, which declares the place and the music track of
+211 maps, says nothing about light.
 
-Fase 1 e Fase 2 sono chiuse per tutto ciò che serve a giocare; la Fase 4 ha
-passato tre milestone dichiarate su tre, e la terza era il giro di gioco.
+### But it is baked into the vertices, and in a world of cubes there are six normals
 
-Il confine si è spostato ancora, e stavolta in modo diverso. Non è più "cosa
-manca al sistema" ma "quanto del mondo regge quando ci si cammina dentro": la
-misura c'è (`walkabout`) e dice **97% degli abitanti raggiungibili** e 365
-passaggi su 369 con l'arrivo in piedi, cioè il 99%. Da qui in avanti si allarga
-la superficie, con gli script come suite di test (Fase 5).
+So the data is read again, grouping the vertex colours by face. On
+`field_16`: up 0.969, the four sides 0.695–0.709, down 0.494.
 
-La Fase 3 resta evitata, e in sessione 11 si è **allontanata**: delle due voci
-che le puntavano contro ne resta una. Il pattugliamento dei nemici non era
-assente dal disco, era assente dalle nostre ricerche — sta in `all.lua.eu`, che
-è la concatenazione di **1.486** sorgenti (869 è il conto dei soli `../lua/`,
-corretto in sessione 12), con 37 nemici su 46 scritti per esteso, moto
-compreso. E adesso **gira**: 312 nemici su 312 eseguono il proprio script,
-nessuno cade e nessuno attraversa un muro, e dalla sessione 13 col proprio
-ciclo di pose — **53 metodi su 161, il 79,2% delle chiamate**. Resta il seguito
-di una schermata (sessione 9), 2 legami dichiarati su 136.
+**The four sides agree within 1%.** That is not Lambertian, which would have
+a light side and a dark side. It is a **vertical** ambient light: the sky.
+Across the 40 overworld maps the spread between the sides has a median of
+2.8%.
 
-Ed è la **sesta** sessione di fila in cui quello che serviva era sul disco, in
-chiaro, in un file che non avevamo aperto — o, stavolta, in una riga che non
-avevamo saputo decodificare: `AddColor` sono i frammenti, e lo dicono due
-commenti in Shift-JIS dentro un file UTF-8.
-
-E una cosa che questa sessione ha fatto tre volte, e vale come metodo: **una
-conclusione già scritta e non applicata è un debito**. `render.md` diceva dalla
-sessione 3 che «la luce dinamica non deve moltiplicare due volte quello che è
-già cotto», e per dieci sessioni il visualizzatore ha continuato a
-moltiplicare.
-
-## Fatto in sessione 13
-
-Quattro voci del TODO prese in ordine: l'illuminazione, la banda 1xxx,
-`AddColor`, `AddAnimation`. Tre chiuse, e la banda 1xxx no — ma con tre strade
-sbarrate e la domanda riformulata.
-
-Il TODO chiedeva l'illuminazione, e diceva dove: in `renderer.md`, non
-nell'host Lua. Aveva ragione sul posto e torto sulla diagnosi — «la luce
-precotta è ~1,5× più chiara del colore dichiarato e noi la spegniamo» dà per
-buono che la luce nostra e quella del dato siano la stessa cosa in due scale.
-Non lo sono: la nostra aveva una **direzione che il dato non ha**. Tutto in
-[`renderer.md`](renderer.md).
-
-### La domanda giusta era: la luce, il disco la dichiara?
-
-E la risposta è due volte no, il che è la parte utile:
+**And the direction flips.** Indoors the same measurement gives the opposite:
 
 ```
-record `light` nei 167 .pac delle mappe        0
-record `light` in tutto il disco             400   una per file
-  di nome `ambient-environment-light`        399
-  cono 40 gradi, decadimento +inf          400/400
+                up/sides   down/sides   spread between the sides
+overworld  40     1.415       0.661            2.8%
+indoors   126     0.822       1.000            0.1%
 ```
 
-Quaranta gradi e decadimento infinito sono i valori di partenza
-dell'esportatore. Il colore lo conferma per assurdo: 336 bianche e 62 dello
-stesso beige, e i 62 sono un insieme senza senso di gioco — otto boss, sette
-mappe d'interfaccia del sotterraneo, `NameEntry`, `Option`. È l'ambiente di
-lavoro di chi ha esportato. E `MapParameter`, che dichiara il posto e il brano
-di 211 mappe, sulla luce non dice niente.
+Where there is a ceiling the upward face is the **darkest**, and the downward
+one comes back level with the sides, because below there is no longer a sky
+to stand out against. A number that behaves like that is light.
 
-### Ma è cotta nei vertici, e in un mondo di cubi le normali sono sei
+### And the places put themselves in order — the validation
 
-Quindi si rilegge, raggruppando i colori di vertice per faccia. Su `field_16`:
-in su 0,969, i quattro fianchi 0,695–0,709, in giù 0,494.
+The up/sides ratio read per location, with the names `MapParameter`
+declares: at the top Dash Circuit (1.52), Lake Garland, Nuntra Desert,
+Gilgamesh Beach, Brilord Plains; at the bottom, **below the seven temples
+(0.814–0.822), the caves** — Sacred Cave 0.78, Fairy's Cave and Rat Hole
+0.75, Mountain Path and Fairy Spring 0.68.
 
-**I quattro fianchi concordano entro l'1%.** Non è una lambertiana — che
-avrebbe un lato chiaro e uno scuro — ma una luce d'ambiente **verticale**, cioè
-il cielo. Sulle 40 mappe di campagna lo scarto fra i fianchi ha mediana 2,8%.
+Beaches, plains and desert at the top, caves at the bottom, temples in the
+middle. The measurement orders the game's places the way someone walking
+through them would, and none of those names went into the calculation. The
+only two `field_*` maps that behave as indoors are `field_50` and `field_91`,
+and `field_91` is **the castle courtyard**.
 
-**E il verso si inverte.** Al chiuso la stessa misura dà il contrario:
+### Who carries it and who does not, decided by two measurements that do not know each other
 
-```
-                su/fianchi   giù/fianchi   scarto fra i fianchi
-campagna  40       1,415         0,661            2,8%
-chiuso   126       0,822         1,000            0,1%
-```
-
-Dove c'è un soffitto la faccia in su è la **più scura**, e quella in giù torna
-al livello dei fianchi perché sotto non c'è più un cielo da cui distinguersi.
-Un numero che si comporta così è luce.
-
-### E i posti si mettono in fila da soli — la validazione
-
-Il rapporto su/fianchi letto per località, coi nomi che `MapParameter`
-dichiara: in cima Dash Circuit (1,52), Lake Garland, Nuntra Desert, Gilgamesh
-Beach, Brilord Plains; in fondo, **sotto i sette templi (0,814–0,822), le
-grotte** — Sacred Cave 0,78, Fairy's Cave e Rat Hole 0,75, Mountain Path e
-Fairy Spring 0,68.
-
-Spiagge, pianure e deserto in cima, grotte in fondo, templi in mezzo. La misura
-ordina i posti del gioco come li ordinerebbe chi ci cammina, e nessuno di quei
-nomi è entrato nel conto. Le due sole `field_*` che si comportano da chiuso
-sono `field_50` e `field_91`, che è **la corte del castello**.
-
-### Chi la porta e chi no, deciso da due misure che non si conoscono
-
-La regola non è «mappa sì, personaggi no». Il colore di vertice è luce dove
-**varia dentro una stessa direzione di faccia** — cioè dove c'è occlusione
-cotta vertice per vertice, che il cielo da solo non spiega:
+The rule is not "maps yes, characters no". The vertex colour is light where
+it **varies within one face direction** — that is, where occlusion has been
+baked vertex by vertex, which the sky alone does not explain:
 
 ```
-campagna   scarto entro i fianchi  42%     241 livelli distinti
-chiuso                              3%       8 livelli
+overworld   spread within the sides  42%     241 distinct levels
+indoors                               3%       8 levels
 ```
 
-I sotterranei ne portano **due** (`d_1_1_1`: un verde muschio e il nero), e due
-livelli non sono una luce: lì la geometria torna fra quella da illuminare, o le
-pareti diventano una massa sola. La soglia del 30% non è a occhio — la seconda
-misura, *«la faccia in su è più chiara dei fianchi?»*, che non sa niente della
-prima, taglia le mappe nello stesso posto: **165 su 167**, e le due che restano
-stanno a ridosso del confine.
+The dungeons carry **two** (`d_1_1_1`: a moss green and black), and two levels
+are not a light: there the geometry goes back among what the renderer lights,
+or the walls become a single mass. The 30% threshold is not set by eye. The
+second measurement, *"is the upward face brighter than the sides?"*, which
+knows nothing of the first, cuts the maps in the same place: **165 of 167**,
+and the two left over sit right against the boundary.
 
-E c'è una categoria che non potrebbe portarla **per costruzione**: un vaso
-istanziato 1.022 volte non ha nei propri vertici la luce di 1.022 posti.
-Infatti `c_obj_all` ha le sei facce entro il **5%** l'una dall'altra — lì il
-colore di vertice è la tinta, ed è la stessa cosa che `nodes.py colors` aveva
-misurato da un altro capo in sessione 12.
+And there is a category that could not carry it **by construction**: a jar
+instanced 1,022 times cannot hold in its vertices the light of 1,022 places.
+Indeed `c_obj_all` has its six faces within **5%** of each other. There the
+vertex colour is the tint, and it is the same thing `nodes.py colors` had
+measured from the other end in session 12.
 
-### A chi resta si dà ambiente più sole, coi numeri del disco
+### What is left gets ambient plus sun, with the disc's numbers
 
-- `Event:SetSunLightAngle(5.65,62.59); -- yaw, pitch` — **il commento è degli
-  autori**. 16 chiamate, 8 valori distinti, e tutti i pitch stanno fra 57,75 e
-  86 gradi: il sole di questo gioco è sempre alto. Mediana 73,5.
-- `SetParallelLight(0.15,0.15,0.15, 0.08,0.08,0.08)` — due terne, la prima
-  sempre più chiara: diffusa e ambiente. `amb/(amb+dif)` vale 0,29, 0,35 e
-  0,43, mediana **0,35** — che è, per inciso, esattamente il coefficiente che
-  la vecchia formula aveva indovinato.
+- `Event:SetSunLightAngle(5.65,62.59); -- yaw, pitch` — **the comment is the
+  authors'**. 16 calls, 8 distinct values, and every pitch lies between 57.75
+  and 86 degrees: the sun in this game is always high. Median 73.5.
+- `SetParallelLight(0.15,0.15,0.15, 0.08,0.08,0.08)` — two triples, the first
+  always the brighter: diffuse and ambient. `amb/(amb+dif)` is 0.29, 0.35 and
+  0.43, median **0.35** — which is, incidentally, exactly the coefficient the
+  old formula had guessed.
 
-L'ambiente non è piatto: segue il profilo verticale che *quella* mappa mostra
-nei propri vertici, così chi cammina in una grotta prende la luce della grotta.
-Resta nostra una cosa sola, ed è dichiarata: gli yaw, a differenza dei pitch,
-sono sparsi da −180 a 31 — sono della scena, non del mondo — e se ne prende uno.
+The ambient is not flat: it follows the vertical profile that *that* map
+shows in its own vertices, so whoever walks in a cave gets the cave's light.
+One thing stays ours, and it is declared: the yaws, unlike the pitches, are
+scattered from −180 to 31 — they belong to the scene, not the world — and one
+of them is taken.
 
-### Cosa si vede
+### What you see
 
-Quel che è sparito è la direzione orizzontale che il dato non ha: la
-lambertiana veniva da `(0,4 0,8 0,45)`, cioè 42 gradi di azimut, e spegneva a
-0,35 i due fianchi che le davano le spalle — sopra un colore che era già la
-luce del posto. Su `field_16`:
+What has gone is the horizontal direction the data does not have. The
+Lambertian came from `(0.4 0.8 0.45)`, an azimuth of 42 degrees, and it dimmed
+to 0.35 the two sides facing away from it — on top of a colour that was
+already the light of the place. On `field_16`:
 
 ```
-                   luminanza media   sotto 0,15   mediana
-prima                    0,195          47,9%      0,160
-dopo                     0,295           5,9%      0,281
+                   mean luminance   below 0.15   median
+before                   0.195          47.9%      0.160
+after                    0.295           5.9%      0.281
 ```
 
-Metà schermo stava sotto 0,15, e gli alberi rivolti a nord e a ovest erano
-neri. Nei sotterranei, dove la luce ora la mette il renderer, il pavimento
-torna più chiaro delle pareti e la pianta della stanza si legge.
+Half the screen was below 0.15, and the trees facing north and west were
+black. In the dungeons, where the renderer now supplies the light, the floor
+is brighter than the walls again and the room's plan can be read.
 
 ```
 python tools/view.py light
 ```
 
-### E chi brilla di suo: `emission`, un campo che il renderer non usava
+### And what glows by itself: `emission`, a field the renderer was not using
 
-Cercando le torce si è trovato l'opposto — le torce **non** sono sorgenti
-dichiarate, e qualcos'altro sì. `emission` è pieno: **277 materiali su 1.792**.
+Looking for the torches turned up the opposite: the torches are **not**
+declared sources, and something else is. `emission` is filled in on **277 of
+1,792 materials**.
 
-**Il caso limite dice come va letto.** I 166 della tavolozza del `CharEditor`
-valgono `1, 1, 1`: un pannello d'interfaccia non riceve luce, si mostra a
-colore pieno. Quindi l'emissione non è un addendo — che li saturerebbe a
-bianco — ma un **pavimento**: `luce = max(illuminazione, emissione)`. Con
-questa lettura il caso dell'interfaccia torna da solo e niente satura.
+**The edge case says how to read it.** The 166 in the `CharEditor` palette
+are `1, 1, 1`: an interface panel receives no light, it shows at full colour.
+So emission is not an addend, which would saturate them to white, but a
+**floor**: `light = max(illumination, emission)`. With this reading the
+interface case comes out on its own and nothing saturates.
 
-Gli altri sono esattamente le cose che in un gioco brillano: le **21 lame
-magiche** (`MR_i_mwp_NN_light`, `_light` in 21 casi su 21) hanno diffuse
-**bianco** e tutto il colore nell'emissione, una per una — la 06 rosso fuoco,
-la 12 azzurra, la 15 verde, la 22 magenta. E poi i proiettili: `tamaa`, 玉,
-emissione 0,30, e quello del boss 0,60.
+The rest are exactly the things that glow in a game. The **21 magic blades**
+(`MR_i_mwp_NN_light`, `_light` in 21 cases of 21) have a **white** diffuse and
+all their colour in the emission, one by one — 06 fire red, 12 light blue, 15
+green, 22 magenta. And then the projectiles: `tamaa`, 玉, emission 0.30, and
+the boss's 0.60.
 
-### Le sei sfere, e la seconda coppia scambiata del disco
+### The six orbs, and the disc's second swapped pair
 
-I cinque emissivi della libreria di mappa sono le sfere degli altari, e il loro
-colore chiude un cerchio della sessione 12, che l'ordine l'aveva stabilito dai
-nomi degli item senza poterlo vedere:
+The five emissives in the map library are the altars' orbs, and their colour
+closes a loop from session 12, which had established the order from the item
+names without being able to see it:
 
-| altare | mappa | l'item dello script | materiale | colore | il walkthrough |
+| altar | map | the script's item | material | colour | the walkthrough |
 |---|---|---|---|---|---|
 | 4116 | `D_1_3` | `item_yelloworb` | `orb_116` | (211, 198, 53) | Yellow Orb |
 | 4117 | `D_2_3` | `item_greenorb` | `orb_117` | (89, 189, 44) | Green Orb |
@@ -297,2138 +431,2098 @@ nomi degli item senza poterlo vedere:
 | 4120 | `D_5_3` | `item_redorb` | `orb_120` | (226, 44, 44) | Red Orb |
 | 4121 | `D_6_3` | `item_whiteorb` | **`orb_118`** | (118, 75, 189) | **Purple** Orb |
 
-**Sei su sei** con i nomi che il walkthrough usa — ed è la terza volta che
-quella fonte, scritta per giocare, valida una lettura fatta sui byte. I due
-nomi interni che non descrivono un colore, `gray` e `white`, sono proprio i due
-che il modello smentisce: la sfera è arancione e viola. *Il nome che il gioco
-mostra vince su quello che gli autori si sono scritti.*
+**Six of six** with the names the walkthrough uses, and this is the third
+time that source, written for playing, has validated a reading made on the
+bytes. The two internal names that do not describe a colour, `gray` and
+`white`, are exactly the two the model contradicts: those orbs are orange and
+purple. *The name the game shows beats the one the authors wrote down for
+themselves.*
 
-E il materiale va **guardato**, non dedotto dal numero: `m_obj_118_b` usa
-`orb_121` e `m_obj_121_b` usa `orb_118`, uno scambio esatto in mezzo a quattro
-che combaciano. Dedurlo dal numero avrebbe dato due colori sbagliati, e sarebbe
-stato lo stesso errore di forma di `NP_NPC_19` ↔ `NP_NPC_26`. Da cui anche
-l'ultima stranezza, che segue il materiale e non il posto: `orb_121` è **il solo
-dei sei senza emissione**, quindi a non brillare è la sfera del terzo tempio.
+And the material has to be **looked at**, not inferred from the number:
+`m_obj_118_b` uses `orb_121` and `m_obj_121_b` uses `orb_118`, an exact swap
+among four that match. Inferring it from the number would have given two
+wrong colours, and it would have been the same shape of mistake as
+`NP_NPC_19` ↔ `NP_NPC_26`. That also explains the last oddity, which follows
+the material and not the place: `orb_121` is **the only one of the six with
+no emission**, so the orb that does not glow is the third temple's.
 
-### `AddAnimation`: il ciclo di pose non si deduce più, si legge
+### `AddAnimation`: the pose cycle is no longer inferred, it is read
 
-Era «il metodo più chiesto che manca», 916 chiamate in 192 moduli. Adesso gira,
-e con `InitializeAnimation` porta la copertura dal 71,8% al **79,2%** — due
-metodi, sette punti.
+It was "the most-requested missing method", 916 calls in 192 modules. It now
+runs, and together with `InitializeAnimation` it takes coverage from 71.8% to
+**79.2%**: two methods, seven points.
 
-`AddAnimation(i, wait)` aggiunge al ciclo il **nodo `i`** per `wait` secondi, e
-che il primo argomento indicizzi gli `AddNode` è l'unica lettura che il corpus
-permette: **in 314 file su 314** l'indice massimo è minore del numero di nodi
-aggiunti, senza una eccezione. Il difetto in cui si cade è che **non sta nella
-`Initialize`** ma nella `Update`, al cambio di stato.
+`AddAnimation(i, wait)` adds **node `i`** to the cycle for `wait` seconds.
+That the first argument indexes the `AddNode` calls is the only reading the
+corpus allows: **in 314 files of 314** the highest index is less than the
+number of nodes added, without one exception. The trap is that it **is not in
+`Initialize`** but in `Update`, at the change of state.
 
-Su 25 nemici che dichiarano un ciclo, **15 dicono esattamente `02_a`/`02_b`** —
-cioè la regola che la sessione 4 aveva dedotto dalla geometria — e dieci la
-correggono: i goblin camminano a **quattro tempi** (`02_a, 01, 02_b, 01`), la
-Killer Bee sbatte le ali con `04_a`/`04_b`, e `c_enm_23`/`24`, che sono fra gli
-otto modelli senza nessuna coppia `_a`/`_b`, hanno il proprio `02, 01`. Anche il
-passo smette di essere un numero nostro: da 0,12 a 0,25 secondi, dichiarato uno
-per uno. In `d_1_1_1`, **59 nemici su 60** prendono il ciclo dal proprio file.
-Tutto in [`actor.md`](actor.md).
+Of 25 enemies that declare a cycle, **15 say exactly `02_a`/`02_b`** — the
+rule session 4 had inferred from the geometry — and ten correct it. Goblins
+walk in **four beats** (`02_a, 01, 02_b, 01`), the Killer Bee flaps its wings
+with `04_a`/`04_b`, and `c_enm_23`/`24`, which are among the eight models
+with no `_a`/`_b` pair at all, have their own `02, 01`. The step timing stops
+being a number of ours too: from 0.12 to 0.25 seconds, declared one by one.
+In `d_1_1_1`, **59 enemies of 60** take their cycle from their own file. All
+of it is in [`actor.md`](actor.md).
 
-### `AddColor` sono i frammenti, e lo scrivono gli autori
+### `AddColor` is the fragments, and the authors say so
 
-La voce stava nel TODO da due sessioni con l'ipotesi giusta e nessuna prova. La
-prova è un commento, e non era mai stato letto perché è in Shift-JIS dentro un
-file UTF-8:
+The item had been in the TODO for two sessions with the right hypothesis and
+no proof. The proof is a comment, and it had never been read because it is in
+Shift-JIS inside a UTF-8 file:
 
 ```lua
 Object:SetAmount( 4 );                  -- 壊れた時の破片の量
 Object:AddColor( 0.38, 0.26, 0.00 );    -- 破片の色
 ```
 
-*La quantità di frammenti quando si rompe*, e *il colore dei frammenti*. Il
-dato regge la lettura senza eccezioni — `AddColor` è **sempre al più
-`SetAmount`, 71 file su 71** — e `SetAmount` vale 4 in 52 file su 78.
+*The amount of fragments when it breaks*, and *the colour of the fragments*.
+The data holds the reading without exception — `AddColor` is **always at
+most `SetAmount`, 71 files of 71** — and `SetAmount` is 4 in 52 files of 78.
 
-Da cui si **spiega** la misura di sessione 12, invece di doverla lasciare come
-stranezza: *«i 132 colori dichiarati sono già quelli dei vertici del proprio
-modello, a mezzo grado di tinta»*. Certo che lo sono — i frammenti di una cosa
-hanno il colore della cosa. E cade l'argomento con cui quella sessione aveva
-escluso «uno per nodo»: che `12GoblinRed` dichiari due volte lo stesso colore
-non esclude niente, perché in una tavolozza di quattro frammenti un colore
-ripetuto **pesa doppio**.
+That **explains** session 12's measurement instead of leaving it as an
+oddity: *"the 132 declared colours are already those of their own model's
+vertices, to half a degree of hue"*. Of course they are: the fragments of a
+thing have the colour of the thing. And the argument with which that session
+had ruled out "one per node" falls. That `12GoblinRed` declares the same
+colour twice rules nothing out, because in a palette of four fragments a
+repeated colour **weighs double**.
 
-Gli otto boss non chiamano `SetAmount` perché si rompono **per parti**:
-`B01Snake` ha `AddColor` per la 頭 (testa), `AddBodyColor` per il 体 (corpo) e
-`AddTailColor` per la 尻尾 (coda), tre colori ciascuno. Tutto in
+The eight bosses do not call `SetAmount` because they break **in parts**:
+`B01Snake` has `AddColor` for the 頭 (head), `AddBodyColor` for the 体 (body)
+and `AddTailColor` for the 尻尾 (tail), three colours each. All of it is in
 [`actor.md`](actor.md).
 
-*Non c'è niente da implementare finché non c'è la distruzione: questa voce si
-chiude come lettura.*
+*There is nothing to implement until there is destruction: this item closes
+as a reading.*
 
-### La banda 1xxx non si è chiusa, ma tre strade sono chiuse
+### The 1xxx band did not close, but three roads are closed
 
-È l'unica voce di questa sessione che resta aperta, e sta in cima al TODO con
-quello che si è misurato: non è il numero di un nodo, non è un indice locale,
-non è il bordo di uno schermo. Quel che si è guadagnato è **la forma** (le
-celle disegnano cornici e filari) e la spaccatura in due gruppi contro la
-collisione, dall'86% al 14% di celle a ridosso di un gradino.
+It is the only item of this session that stays open, and it sits at the top
+of the TODO with what was measured: it is not a node number, not a local
+index, not the edge of a screen. What was gained is **the shape** (the cells
+draw frames and rows) and its split into two groups against the collision:
+86% of the cells sit right against a step in one, 14% in the other.
 
-E tre cose cadute lungo la strada, che valgono per conto proprio:
+And three things that fell out along the way, each worth having on its own:
 
-- **`d_hmw_03` non manca.** Stava scritto in [`objects.md`](objects.md) come
-  «il solo dichiarato che le celle non usano»: sta in `d_chikei` invece che in
-  `d_haichi`. La famiglia è divisa fra due file, e non era un avanzo.
-- **Il conto del sotterraneo torna da tre file**: `d_haichi` dichiara 28
-  oggetti, `DFI_DUNGEON_OBJECT` ha 28 voci, la banda 3xxx usa 28 numeri. Per la
-  campagna i primi due tornano fra loro (40 e 40) e il terzo no — che è
-  esattamente dove sta il problema.
-- **Le sigle si leggono**, perché la tavola dei simboli le nomina in rōmaji
-  dove il nodo sta in tre lettere: `d_kbe` è `MPD_D_KABE`, 壁 il muro (145
-  voci, la famiglia più numerosa del disco); `d_dns` è 段差 il dislivello;
-  `d_hsr` 柱 la colonna; `d_skr` 仕切り il divisorio; `d_yka` 床 il pavimento;
-  `f_gke` è `MPD_F_CLIF`, 崖 la rupe; `f_jmn` il terreno. **Sette su nove** — e
-  le due che restano sigle sono proprio quelle delle bande aperte.
+- **`d_hmw_03` is not missing.** [`objects.md`](objects.md) had it as "the
+  only declared one the cells do not use": it is in `d_chikei` instead of
+  `d_haichi`. The family is split across two files, and it was not a
+  leftover.
+- **The dungeon count agrees across three files**: `d_haichi` declares 28
+  objects, `DFI_DUNGEON_OBJECT` has 28 entries, the 3xxx band uses 28
+  numbers. For the overworld the first two agree with each other (40 and 40)
+  and the third does not — which is exactly where the problem lies.
+- **The abbreviations can be read**, because the symbol table names them in
+  rōmaji where the node has three letters: `d_kbe` is `MPD_D_KABE`, 壁 the
+  wall (145 entries, the largest family on the disc); `d_dns` is 段差 the
+  ledge; `d_hsr` 柱 the column; `d_skr` 仕切り the partition; `d_yka` 床 the
+  floor; `f_gke` is `MPD_F_CLIF`, 崖 the cliff; `f_jmn` the ground. **Seven of
+  nine**, and the two that stay abbreviations are exactly those of the open
+  bands.
 
-## Fatto in sessione 12
+## Session 12
 
-Il TODO chiedeva **l'aggancio** dei ventun gimmick, perché un vaso non carica
-`EN_ENEMY_NN`. Non passa da nessuna regola: c'è una tabella, ed è la quinta
-sessione di fila in cui quello che serviva era sul disco, in chiaro, in un file
-che non avevamo aperto. Tutto in [`objects.md`](objects.md), `tools/nodes.py`.
+The TODO asked for **the hook-up** of the twenty-one gimmicks, because a jar
+does not load `EN_ENEMY_NN`. It goes through no rule: there is a table, and
+this is the fifth session in a row in which what was needed was on the disc,
+in the clear, in a file we had not opened. All of it is in
+[`objects.md`](objects.md), `tools/nodes.py`.
 
-### Il disco dichiara i propri simboli, 1.279 righe
+### The disc declares its own symbols, 1,279 rows
 
 ```lua
 addNodeListElement( TFI_EVENT_OBJECT, DFI_EVENT_OBJECT,
                     MPD_M_OBJ_127_a,  "m_obj_127_01" );
 ```
 
-Il pacchetto delle texture, quello della scena, **la costante nativa con cui il
-codice nomina il pezzo**, e **il nome del nodo**. Cioè il ponte fra il nome che
-uno script pronuncia e il nodo dentro un `.dsb` non è più una nostra deduzione.
+The texture package, the scene package, **the native constant with which the
+code names the piece**, and **the node's name**. So the bridge between the
+name a script utters and the node inside a `.dsb` is no longer an inference
+of ours.
 
 ```
-nodi dichiarati                          1.279
-  che esistono davvero in un .dsb        1.267    99,1%
-costanti passate ad AddNode                394
-  dichiarate nella tavola                  387    98,2%
+declared nodes                           1,279
+  that really exist in a .dsb            1,267    99.1%
+constants passed to AddNode                394
+  declared in the table                    387    98.2%
 ```
 
-E le **sei righe commentate** nominano tutte e sei modelli che nel disco finito
-non esistono più: la tavola era mantenuta.
+And the **six commented-out rows** all name models that no longer exist on
+the finished disc: the table was maintained.
 
-### E conferma tre sessioni di deduzioni — tranne due caselle, che erano le nostre
+### And it confirms three sessions of inferences — except two entries, which were ours
 
 ```
-EN_ENEMY_NN -> c_enm_NN     135 su 136
-NP_NPC_NN   -> c_npc_NN     112 su 116
+EN_ENEMY_NN -> c_enm_NN     135 of 136
+NP_NPC_NN   -> c_npc_NN     112 of 116
 ```
 
-Le quattro voci fuori schema sono **due numeri scambiati**, `NP_NPC_19` ↔
-`NP_NPC_26`, ed è esattamente la coppia che la sessione 8 aveva indicato come
-punto debole della propria rubrica: *«le eccezioni cadono tutte su
-`c_npc_19`…`c_npc_26`»*. Aveva ragione a dire dove guardare.
+The four entries off the pattern are **two swapped numbers**, `NP_NPC_19` ↔
+`NP_NPC_26`, and that is exactly the pair session 8 had pointed to as the weak
+spot of its own mapping: *"the exceptions all fall on
+`c_npc_19`…`c_npc_26`"*. It was right about where to look.
 
-Passando per i 263 file di `Object/npc/` si rilegge la rubrica archetipo→
-modello che la sessione 4 aveva dedotto dai nomi dei 237 script di dialogo:
-**20 archetipi su 22 concordi, 2 corretti**. E la seconda correzione è quella
-che vale:
+Going through the 263 files of `Object/npc/` re-reads the archetype→model
+mapping that session 4 had inferred from the names of the 237 dialogue
+scripts: **20 archetypes of 22 agree, 2 are corrected**. And the second
+correction is the one that counts:
 
-- **`princessbug` è `c_npc_26`**, ed è lo scambio di cui sopra. Vista, la
-  differenza è di colore: `c_npc_19`, `26` e `27` sono tre figure alate rossa,
-  blu e verde — `N19PrincessBug`, `N26PrincessBugB`, `N27PrincessBugC`.
-- **`goblinred` è `c_enm_12`**, cioè un modello di **nemico**. I goblin rossi
-  amichevoli del villaggio riusano il goblin rosso che si combatte, ed è per
-  questo che sotto `Object/` non c'è nessun `N26GoblinRed`: non serviva.
+- **`princessbug` is `c_npc_26`**, which is the swap above. Seen, the
+  difference is one of colour: `c_npc_19`, `26` and `27` are three winged
+  figures, red, blue and green — `N19PrincessBug`, `N26PrincessBugB`,
+  `N27PrincessBugC`.
+- **`goblinred` is `c_enm_12`**, that is an **enemy** model. The village's
+  friendly red goblins reuse the red goblin you fight, and that is why there
+  is no `N26GoblinRed` under `Object/`: it was not needed.
 
-La seconda non è uno scarto di un numero, è un cambio di famiglia: nessuna
-deduzione fatta *dentro* la sola `c_npc` poteva arrivarci, perché cercava un
-`c_npc_NN` e ne trovava uno. *Il numero nel nome di uno script di **dialogo** e
-quello del **modello** sono due numerazioni, non una — combaciano venti volte
-su ventidue, ed è per questo che sembravano la stessa.*
+The second is not an off-by-one, it is a change of family. No inference made
+*inside* `c_npc` alone could have reached it, because it was looking for a
+`c_npc_NN` and found one. *The number in the name of a **dialogue** script and
+the number of the **model** are two numberings, not one. They agree twenty
+times out of twenty-two, and that is why they looked like the same one.*
 
-### La cella dichiara il modello: `4000 + NN`
+### The cell declares the model: `4000 + NN`
 
-Gli script dei gimmick caricano `MPD_M_OBJ_*`, la tavola li manda su `m_obj_*`,
-e l'identificativo della cella è **4000 più quel numero**. Non è una lettura di
-una: la reggono tre famiglie che non si conoscono, **51 celle su 51**, zero
-discordanti — 34 `Signboard` (4041 / `m_obj_41`), 12 `Stonemark` (4067 /
-`m_obj_67`), 3 `Well` (4063 / `m_obj_63`).
+The gimmick scripts load `MPD_M_OBJ_*`, the table sends those to `m_obj_*`,
+and the cell's identifier is **4000 plus that number**. It is not a reading
+of one case: three families that do not know each other hold it up, **51
+cells of 51**, zero disagreeing — 34 `Signboard` (4041 / `m_obj_41`), 12
+`Stonemark` (4067 / `m_obj_67`), 3 `Well` (4063 / `m_obj_63`).
 
-Da lì si legge tutta la banda, che finora era un numero: **4127 è l'erba che si
-taglia** (272 celle), 4111 le lapidi dei boss, 4116–4121 i sei altari delle
-sfere, 4062 il piedistallo della spada, 4099 le 859 torce, 4060 i 1.022
-forzieri. E la banda 3xxx è `3000 + NN` → `d_hmw_NN`, i «Dungeon配置物» del
-commento degli autori, **28 numeri su 28**.
+From there the whole band, which until now was a number, can be read: **4127
+is the grass you cut** (272 cells), 4111 the bosses' gravestones, 4116–4121
+the six orb altars, 4062 the sword's pedestal, 4099 the 859 torches, 4060 the
+1,022 chests. And the 3xxx band is `3000 + NN` → `d_hmw_NN`, the
+"Dungeon配置物" of the authors' comment, **28 numbers of 28**.
 
-**La prova per struttura, che è più forte del conto.** I sei altari e le sei
-lapidi non stanno dove capita: una lapide per sala del boss, un altare nella
-sala successiva, sempre alla stessa cella (7–8, 4), e l'ordine degli altari è
-quello dei templi — `item_yelloworb`, `greenorb`, `grayorb`, `blueorb`,
-`redorb`, `whiteorb`. Sei su sei, nel tempio giusto, nell'ordine giusto. Le
-lapidi sono sette script per sei celle, e il settimo si firma da sé: in
-`BossMarker07` la guardia è commentata e al posto dell'evento c'è
-`Print("ぼひょー")`.
+**The proof by structure, which is stronger than the count.** The six altars
+and the six gravestones are not placed at random: one gravestone per boss
+room, one altar in the room after it, always at the same cell (7–8, 4), and
+the order of the altars is that of the temples — `item_yelloworb`,
+`greenorb`, `grayorb`, `blueorb`, `redorb`, `whiteorb`. Six of six, in the
+right temple, in the right order. The gravestones are seven scripts for six
+cells, and the seventh signs itself: in `BossMarker07` the guard is commented
+out and in place of the event there is `Print("ぼひょー")`.
 
-**E l'assenza si legge come la presenza.** Delle 4.229 celle senza modello,
-**3.843 (il 91%) stanno in 4100…4105**, sei numeri di fila; e
-`m_obj_100`…`m_obj_107` è **il buco più lungo di tutta la numerazione** della
-libreria, mentre gli altri sono larghi da uno a cinque e sparsi. 4100 sono i
-`Warp` e gli osservatori, 4101 `Exit`, `destructionWall`, `WarpDoor` — cioè
-esattamente le classi che la sessione 8 aveva misurato assenti sia dalla
-geometria sia dalla collisione. Il disco ha riservato un blocco della
-numerazione a chi un oggetto non ce l'ha.
+**And absence reads like presence.** Of the 4,229 cells with no model,
+**3,843 (91%) are in 4100…4105**, six numbers in a row; and
+`m_obj_100`…`m_obj_107` is **the longest gap in the library's whole
+numbering**, while the others are one to five wide and scattered. 4100 is the
+`Warp`s and the observers, 4101 `Exit`, `destructionWall`, `WarpDoor` —
+exactly the classes session 8 had measured as absent from both the geometry
+and the collision. The disc has reserved a block of the numbering for
+whatever has no object.
 
-### E si vedono — `walk.populate_props`, `view.Charlib`
+### And they can be seen — `walk.populate_props`, `view.Charlib`
 
-7.695 celle-oggetto su 11.924 (**64,5%**) hanno un modello e si disegnano. Il
-disegnatore non ha avuto bisogno di una strada nuova: cambia solo la libreria
-in cui cercare il nodo, e i nomi bastano a dire quale.
+7,695 object cells of 11,924 (**64.5%**) have a model and are drawn. The
+drawing needed no new path: only the library in which to look for the node
+changes, and the names are enough to say which.
 
-La verifica è di riconoscibilità, come per i nemici in sessione 8:
+The check is one of recognisability, as for the enemies in session 8:
 
-- in `d_60_3` la cella dice `Well01`, l'identificativo dice `m_obj_63`, e
-  compare **un pozzo di pietra con l'intelaiatura di legno**, col cartello
-  accanto che la cella vicina dichiara;
-- nella corte del castello compaiono **colonne e bracieri schierati in
-  specchio** sui due lati — che è quel che *配置物* vuol dire;
-- nella stanza del Grass Temple dove la sessione 8 aveva messo due Scorpion e
-  uno Soldier Bones ci sono adesso anche **due vasi e la porta rossa**.
+- in `d_60_3` the cell says `Well01`, the identifier says `m_obj_63`, and **a
+  stone well with a wooden frame** appears, with the signboard beside it that
+  the neighbouring cell declares;
+- in the castle courtyard **columns and braziers in mirror image** appear on
+  the two sides — which is what *配置物* means;
+- in the Grass Temple room where session 8 had put two Scorpions and one
+  Soldier Bones there are now also **two jars and the red door**.
 
-E messi in fila con `view.py char`, uno chiude un cerchio da solo:
-**`m_obj_116_b` è una sfera gialla**, ed è il nodo che `OrbAltar01` spegne con
-`SetNodeVisible(1, false)` *«se hai già preso la sfera gialla»*. Il codice dice
-cosa nascondere e il modello è giallo, da due file che non si conoscono.
+And lined up with `view.py char`, one of them closes a loop by itself:
+**`m_obj_116_b` is a yellow orb**, and it is the node `OrbAltar01` hides with
+`SetNodeVisible(1, false)` *"if you have already taken the yellow orb"*. The
+code says what to hide and the model is yellow, from two files that do not
+know each other.
 
-### E il vaso, che era la domanda di partenza
+### And the jar, which was the question this started from
 
-Il vaso è **`m_obj_60`, identificativo 4060, 1.022 celle — l'oggetto più
-numeroso del disco**. E che sia lui lo dice `Jar.lua`, che è una tabella di tre
-colori e nient'altro: i tre cadono su tre delle **sette** tinte di `m_obj_60`
-a **0,1–0,3 gradi** l'una. Il vaso non carica niente perché non ha uno script:
-lo istanzia il C++, e di suo il disco dichiara la cella e la tavolozza.
+The jar is **`m_obj_60`, identifier 4060, 1,022 cells — the most numerous
+object on the disc**. What says it is the jar is `Jar.lua`, which is a table
+of three colours and nothing else: the three fall on three of the **seven**
+tints of `m_obj_60` within **0.1–0.3 degrees** each. The jar loads nothing
+because it has no script: the C++ instantiates it, and the disc itself
+declares only the cell and the palette.
 
-*Ipotesi caduta lungo la strada, e va detta perché era la prima voce di questo
-TODO.* Gli oggetti vengono scuri e sembrava che mancasse `AddColor`. È falsa. Il
-primo dubbio è nel codice — `12GoblinRed` chiama `AddColor` quattro volte di
-fila **e le prime due sono identiche**, il che esclude sia «una per nodo» sia
-«una per colore del modello». La prova è la misura di cui sopra, estesa a tutto
-il corpus: **132 colori dichiarati da 42 file, scarto di tinta mediano 0,5
-gradi, 94% sotto i 5 gradi** contro la tavolozza del proprio modello. `AddColor`
-*dichiara* i colori che il modello ha già; applicarli non cambierebbe la tinta
-di niente. Il buio è la nostra illuminazione.
+*A hypothesis that fell along the way, and it has to be stated because it was
+the first item of this TODO.* Objects come out dark and it looked as if
+`AddColor` were missing. It is false. The first doubt is in the code:
+`12GoblinRed` calls `AddColor` four times in a row **and the first two are
+identical**, which rules out both "one per node" and "one per model colour".
+The proof is the measurement above, extended to the whole corpus: **132
+colours declared by 42 files, median hue difference 0.5 degrees, 94% under 5
+degrees** against their own model's palette. `AddColor` *declares* the
+colours the model already has; applying them would change the tint of
+nothing. The darkness is our lighting.
 
 ```
 python tools/nodes.py colors
 ```
 
-### Un conto corretto: `all.lua.eu` sono 1.486 sorgenti, non 869
+### A corrected count: `all.lua.eu` is 1,486 sources, not 869
 
-869 è il conto dei soli `../lua/`, che è un albero su ventinove: gli altri
-ventotto sono i file di dati (`Event/`, `MiniGame/`, `UserInterface/`) nello
-stesso flusso. Cercare il confine di un sorgente solo fra i `../lua/` fa
-inghiottire a sette di loro le 185 che li seguono — `Object/DropItemList` si
-prendeva i cento file del minigioco. Nessuno dei sette è un file di nemico,
-quindi le misure di sessione 11 non cambiano; il conto sì, e con esso l'idea di
-quanto disco quel file contenga.
+869 is the count of the `../lua/` sources alone, which is one tree of
+twenty-nine; the other twenty-eight are the data files (`Event/`,
+`MiniGame/`, `UserInterface/`) in the same stream. Looking for a source's
+boundary only among the `../lua/` ones made seven of them swallow the 185
+that follow them — `Object/DropItemList` was taking in the minigame's hundred
+files. None of the seven is an enemy file, so session 11's measurements do
+not change; the count does, and with it the idea of how much of the disc that
+file contains.
 
-*Caduto lungo la strada, e vale perché era una fonte in più che nessuno aveva
-letto:* `DropItemList` è un array di 38 righe, e il commento della riga `N`
-nomina il nemico `NN` — **37 su 38**, con l'unico scarto che è un refuso degli
-autori (`34Succubus2` dove il file è `35Succubus2`), non uno slittamento,
-perché la 36 torna a `36HagureSlime`. È la quarta conferma indipendente della
-tabella numero→nemico. `08Rock` è l'unica voce vuota: un masso non lascia
-cadere niente. E dopo le 38 ci sono **due chiavi per nome**, `['Grass']` e
-`['Guard']` — l'erba che si taglia lascia monete, ed è lo stesso `Grass` delle
-272 celle qui sopra.
+*Fallen out along the way, and worth it because it was one more source nobody
+had read:* `DropItemList` is an array of 38 rows, and the comment on row `N`
+names enemy `NN` — **37 of 38**. The one miss is the authors' typo
+(`34Succubus2` where the file is `35Succubus2`), not a shift, because 36 goes
+back to `36HagureSlime`. It is the fourth independent confirmation of the
+number→enemy table. `08Rock` is the only empty entry: a boulder drops
+nothing. And after the 38 there are **two keys by name**, `['Grass']` and
+`['Guard']`: the grass you cut drops coins, and it is the same `Grass` as the
+272 cells above.
 
-## Fatto in sessione 11
+## Session 11
 
-Le due code piccole rimaste, prese sul serio — e cercando la prima si è aperto
-un file che rimette in discussione la voce in cima a questo TODO.
+The two small loose ends that were left, taken seriously — and looking for
+the first one opened a file that calls the item at the top of this TODO back
+into question.
 
-### 5080 è Togetoge, e la classe è il verso in cui si muove
+### 5080 is Togetoge, and the class is the direction it moves in
 
-La sessione 10 aveva letto bene la geometria e concluso male: *«non è una
-creatura, è una figura»*. È un attore, e a dirlo è il file che lo scrive —
-`../lua/Object/69Togetoge.lua`, トゲトゲ, «spuntoni». Il commento in testa **è
-la tabella che cercavamo**:
-
-```
-0 : 縦移動                verticale
-1 : 横移動                orizzontale
-2 : 縦移動（突撃タイプ）    verticale, a carica
-3 : 横移動（突撃タイプ）    orizzontale, a carica
-```
-
-e la classe `4` è `TogetogeDashUpdate(Object,2)`, cioè 縦横: fermo finché non
-gli ti allinei, poi carica su tutti e due gli assi.
-
-La geometria diventa allora una controprova, e della specie giusta — è una
-regola che il piazzamento non può violare senza rompere il gioco, perché due
-spuntoni sulla stessa corsia si scontrerebbero al primo passo:
+Session 10 had read the geometry well and concluded badly: *"it is not a
+creature, it is a figure"*. It is an actor, and the file that writes it says
+so — `../lua/Object/69Togetoge.lua`, トゲトゲ, "spikes". The comment at its
+head **is the table we were looking for**:
 
 ```
-classe 0 (verticale)    colonne tutte distinte    4 gruppi su  4
-classe 1 (orizzontale)  righe tutte distinte      5 gruppi su  5
-classe 4 (a carica)     2 colonne e 2 righe      11 gruppi su 11
+0 : 縦移動                vertical
+1 : 横移動                horizontal
+2 : 縦移動（突撃タイプ）    vertical, charging
+3 : 横移動（突撃タイプ）    horizontal, charging
 ```
 
-Il modello c'è, ed è `EN_ENEMY_39_01` = `c_enm_39_01`, **l'ultimo** dei 39: era
-la regola `5080 → c_enm_64` a non valere lì, non il modello a mancare. E
-l'album ha ragione a non elencarlo, perché `69Togetoge` non chiama
-`setBookRegistInfo`: i 46 dell'album sono i 46 che **si registrano nel
-bestiario**. Non lo fa neanche `08RockFall.lua` — che carica `EN_ENEMY_08`, e
-il cui nome conferma per la terza volta il masso che cade di 5024.
+and class `4` is `TogetogeDashUpdate(Object,2)`, that is 縦横: still until
+you line up with it, then it charges along both axes.
 
-Il walkthrough valida due volte senza saperlo: gli *«spike puzzle»* che elenca
-stanno in Aqua Temple, Wind Temple, Dark Tower e nella caverna a ovest della
-torre, cioè **le sole mappe con 5080 di classe 0 o 1**; e dove avverte che
-*«if you don't move at all upon entering a room… traps won't activate»*, il
-codice dice `if( not Object:IsPlayerArea() ) then return; end`.
-
-Un'ipotesi caduta lungo la strada, e vale perché era la più naturale: che le
-quattro celle agli angoli fossero i **quattro interruttori** dei puzzle a
-tempo. Il walkthrough ne conta a decine in ogni tempio, Grass compreso — che di
-5080 non ha nessuno.
-
-### `+0x08` non è un numero, è una coppia — e la vecchia lettura era un campione
-
-`n·257` e `2ⁿ` tornavano perché i due byte coincidono nel **92,3%** dei casi.
-Sul disco intero quella lettura salta 33.000 volte. Quel che non ammette
-eccezioni è un'altra cosa:
+The geometry then becomes a cross-check, and of the right kind. It is a rule
+the placement cannot break without breaking the game, because two spikes on
+the same lane would collide at the first step:
 
 ```
-byte alti a zero      482.180 su 482.180
-b1 >= b0              482.180 su 482.180
-+0x0C con due bit     mai
+class 0 (vertical)      all columns distinct      4 groups of  4
+class 1 (horizontal)    all rows distinct         5 groups of  5
+class 4 (charging)      2 columns and 2 rows     11 groups of 11
 ```
 
-Quindi è un **intervallo**, e `+0x0C` ne porta il solo estremo basso. Cosa
-misuri resta aperto, ma il campo è molto più stretto di ieri: i valori vanno da
-0 a 31, per mappa sono 2-3 nei sotterranei e fino a 7 in campagna — il profilo
-di una **quota** — e il pavimento misurato concorda con `b0` nell'84,1% dei
-sotterranei e nel 68,2% della campagna. Forte, e sotto la soglia a cui qui si
-chiama oracolo un test.
+The model exists, and it is `EN_ENEMY_39_01` = `c_enm_39_01`, **the last** of
+the 39: it was the rule `5080 → c_enm_64` that did not hold there, not the
+model that was missing. And the album is right not to list it, because
+`69Togetoge` does not call `setBookRegistInfo`: the album's 46 are the 46
+that **register themselves in the bestiary**. Nor does `08RockFall.lua`,
+which loads `EN_ENEMY_08` and whose name confirms 5024's falling boulder for
+the third time.
 
-L'indizio migliore è l'eccezione: le **272** celle in cui `+0x0C` ha più di un
-bit stanno tutte in `field_7`, hanno `b0 = b1 = 31` e maschera `0x7FFFFFFF`.
-Trentuno è il massimo che una maschera a 32 bit porta, e field_7 è la mappa più
-alta del disco — quella che in sessione 6 obbligò a misurare l'altezza della
-colonna invece di assumerla. È una saturazione.
+The walkthrough validates twice without knowing it. The *"spike puzzles"* it
+lists are in Aqua Temple, Wind Temple, Dark Tower and the cave west of the
+tower — **the only maps with 5080 of class 0 or 1**. And where it warns that
+*"if you don't move at all upon entering a room… traps won't activate"*, the
+code says `if( not Object:IsPlayerArea() ) then return; end`.
 
-Il tetto per mappa che `map_param.lua` dichiara (`field07=20`) **non** limita
-`b1`: regge in 8 mappe su 35. Quella strada è chiusa.
+A hypothesis that fell along the way, worth recording because it was the most
+natural one: that the four corner cells were the **four switches** of the
+timed puzzles. The walkthrough counts dozens of those in every temple, Grass
+included — and Grass has no 5080 at all.
 
-### E il file che ha aperto tutto: i nemici sono scritti in Lua
+### `+0x08` is not a number, it is a pair — and the old reading was a sample
 
-`all.lua.eu` non è un file: è la **concatenazione di 869 sorgenti**, con
-l'albero delle cartelle lasciato nei commenti (`-- Start ../lua/Object/06Bee.lua`).
-Dentro ci sono 128 file `Object/`, 266 `Object/npc/`, 21 `Object/gimmick/`.
-
-```
-nemici che chiamano setBookRegistInfo      46      quanti ne dichiara l'album
-di cui con la Update completa              46
-di cui con il moto (fasi, velocita', direzione, inseguimento)   37
-i 9 restanti: gli 8 boss piu' Guardian, che in Lua hanno la sola Initialize
-```
-
-Cioè **la voce in cima a questo TODO è da riscrivere**. «Il pattugliamento non
-è dichiarato in chiaro da nessuna parte» era vero dei dodici file del minigioco
-e falso del gioco: `06Bee.lua` dichiara `MoveArea = 10.0` col commento
-*出現位置からの行動可能範囲* — il raggio d'azione dal punto di comparsa — e lo
-usa in `IsActorMoveArea`. Il moto dei nemici comuni si legge.
-
-*Perché non l'avevamo visto: il pattugliamento era stato cercato in
-`MapParameter`, in `GameParamData` e nell'API — mai qui. E `all.lua.eu` è uno
-dei 21 file con i commenti in Shift-JIS che fino a sessione 9 rendevano
-illeggibile quasi tutto ciò che conteneva.*
-
-### E i nemici si muovono — [`actor.md`](actor.md), `tools/actor.py`
-
-Non è rimasta una lettura: gira. `Troupe` carica la VM una volta (869 sorgenti
-in un decimo di secondo), ogni nemico piazzato riceve l'oggetto che il Lua
-chiama `Object`, e ogni fotogramma se ne esegue la `Update`.
+`n·257` and `2ⁿ` worked because the two bytes coincide in **92.3%** of cases.
+Across the whole disc that reading breaks 33,000 times. What admits no
+exception is something else:
 
 ```
-36 metodi implementati su 134 chiesti = 72,7% delle chiamate
-312 attori su 312 nemici piazzati trovano il proprio comportamento
-  0 script caduti      0 usciti dal calpestabile muovendosi
-261 su 312 si muovono da soli, in cinque secondi, su cinque mappe
+high bytes zero       482,180 of 482,180
+b1 >= b0              482,180 of 482,180
++0x0C with two bits   never
 ```
 
-Il 12% che sta su una cella senza pavimento **c'era già alla partenza** — sono
-i 546 di sessione 10 — e chi parte sul pavimento non lo lascia mai. I 51 fermi
-non sono un difetto: fra loro ci sono tutti i Togetoge, che la prima riga della
-loro `Update` congela finché il giocatore non entra nella stanza.
+So it is a **range**, and `+0x0C` carries only its lower end. What it
+measures stays open, but the field is much narrower than it was: the values
+go from 0 to 31, per map they number 2-3 in the dungeons and up to 7 in the
+overworld — the profile of a **height** — and the measured floor agrees with
+`b0` in 84.1% of the dungeons and 68.2% of the overworld. Strong, and below
+the threshold at which this project calls a test an oracle.
 
-**La prova che chiude il cerchio con la coda di stamattina.** La classe di 5080
-era stata letta come asse di movimento, dal commento del file più la geometria
-del piazzamento. Eseguendo gli script la stessa cosa si misura dall'altro capo:
+The best clue is the exception. The **272** cells in which `+0x0C` has more
+than one bit are all in `field_7`, have `b0 = b1 = 31` and the mask
+`0x7FFFFFFF`. Thirty-one is the most a 32-bit mask can carry, and field_7 is
+the highest map on the disc — the one that in session 6 forced us to measure
+the height of the column instead of assuming it. It is a saturation.
 
-```
-Togetoge classe 1 (orizzontale)   spostamento  X 2,3   Z 0,0
-Togetoge classe 0 (verticale)     spostamento  X 0,0   Z 29,2
-```
+The per-map ceiling that `map_param.lua` declares (`field07=20`) does **not**
+bound `b1`: it holds in 8 maps of 35. That road is closed.
 
-Tre decisioni di metodo sono in [`actor.md`](actor.md) e vale la pena
-ricordarne una qui: **in Lua `0` è vero**, quindi rispondere zero a un
-predicato non implementato darebbe un nemico che crede sempre di vedere il
-giocatore — un comportamento inventato da noi. A dare la risposta giusta è la
-convenzione di nome del codice originale (`Is…` predicato, `Get…` numero, il
-resto comando), che è regolare su tutti e 55 i file.
+### And the file that opened everything: the enemies are written in Lua
 
-`python tools/view.py play d_1_1_1 --cell 39,18 --skip 6` fotografa la stanza
-dopo sei secondi di vita: gli scorpioni si sono girati e spostati, lo scheletro
-ha camminato. `--still` li lascia fermi.
-
-### E gli abitanti gironzolano
-
-Stessa cartella, stesso aggancio: **33 file di NPC**, e `OldManUpdate` è tutto
-il gironzolare dei villaggi — direzione a caso, una casella al secondo, quattro
-caselle di raggio, da capo.
+`all.lua.eu` is not one file: it is the **concatenation of 869 sources**, with
+the folder tree left in the comments (`-- Start ../lua/Object/06Bee.lua`).
+Inside are 128 `Object/` files, 266 `Object/npc/`, 21 `Object/gimmick/`.
 
 ```
-la corte del castello: 33 abitanti, 32 con il proprio script, 22 gironzolano
-0 errori   0 usciti dal pavimento
+enemies that call setBookRegistInfo      46      as many as the album declares
+of which with the full Update            46
+of which with motion (phases, speed, direction, pursuit)   37
+the remaining 9: the 8 bosses plus Guardian, which have only Initialize in Lua
 ```
 
-**Dieci file non hanno affatto una `Update`** — il Re, i sei saggi, l'eroe
-leggendario, il suo fantasma, il Re delle medaglie — e fra i 55 nemici non
-manca mai. Il disco dichiara l'immobilità con un'assenza, e la categoria è
-quella giusta: chi aspetta in fondo a un tempio non passeggia. Ma fermi non
-vuol dire immobili: `KingInitialize` alterna le due pose del passo ogni mezzo
-secondo, ed è il motivo per cui `AddAnimation` la chiama anche chi non si muove.
+That is, **the item at the top of this TODO has to be rewritten**. "Patrolling
+is not declared in the clear anywhere" was true of the minigame's twelve
+files and false of the game: `06Bee.lua` declares `MoveArea = 10.0` with the
+comment *出現位置からの行動可能範囲* — the range of action from the spawn
+point — and uses it in `IsActorMoveArea`. The common enemies' motion can be
+read.
 
-Caduto lungo la strada un aggancio che vale: i modelli 02–08 scrivono
-`NP_NPC05_01` e gli altri `NP_NPC_09_01`, due convenzioni sullo stesso disco,
-ma **il numero del file e quello del nodo coincidono 33 volte su 33** — la
-terza conferma indipendente della tabella archetipo→modello di sessione 4.
+*Why we had not seen it: patrolling had been looked for in `MapParameter`, in
+`GameParamData` and in the API, never here. And `all.lua.eu` is one of the 21
+files with Shift-JIS comments that until session 9 made almost everything in
+them unreadable.*
 
-E una cosa che **nessuno dichiara**, da segnare come nostra: la direzione
-iniziale di un abitante. Non è negli script (nessuno dei dieci fermi chiama
-`SetDirection`) e non è nella griglia (le celle che nominano un NPC non portano
-un solo flag). Il `facing = 1` è una scelta di `walk.populate`.
+### And the enemies move — [`actor.md`](actor.md), `tools/actor.py`
 
-Ma il **piazzamento la implica**, e questo si misura: chi non si muove sta
-sempre più in alto della porta da cui si entra — **11 casi su 11** al chiuso,
-con il Re di Dotnia a y=11, la porta a y=36 e sei cortigiani schierati in
-mezzo. Gli si cammina incontro, quindi guardare verso il basso della griglia
-vuol dire guardare chi arriva. È la convenzione che ci si aspetta da un gioco
-del genere, ma qui non è presa dal genere: è misurata. Resta un'inferenza — il
-dato dice dove stanno, non dove guardano — solo che è un'inferenza con un
-oracolo. *(L'unica eccezione è un saggio in campagna aperta, dove «la porta più
-vicina» non è l'ingresso di una sala e la domanda non si pone.)*
-
-## Fatto in sessione 10
-
-Le tre code che la sessione 8 aveva isolato, chiuse tutte e tre — e una premessa
-che le sorreggeva, tolta.
-
-### «Non si sovrappongono mai» era una tautologia
-
-Fra le tre misure che dicevano *«A, B, C sono tre disposizioni della stessa
-popolazione»*, la più convincente era che le loro celle non si sovrappongono
-mai. Non prova niente: `mapdat.cells` percorre `for i in range(w*h)`, cioè
-**una cella, un record**, e ogni record porta un attore e una lettera soli. Due
-lettere nella stessa cella **non possono esistere nel formato**.
-
-La lettura non cambia — le altre due misure reggono — ma il conto degli indizi
-sì, ed è la ragione per cui vale la pena verificare la premessa prima del
-risultato.
-
-### `F,G,H` si aggiungono, e si misura per assurdo
-
-Era l'ultima cosa scritta come inferenza aritmetica. Basta contare le mappe:
+It did not stay a reading: it runs. `Troupe` loads the VM once (869 sources
+in a tenth of a second), each placed enemy receives the object the Lua calls
+`Object`, and every frame its `Update` is run.
 
 ```
-con A,B,C e F,G,H     50
-con i soli A,B,C       9      la più popolosa è d_5_1_2, 45 nemici
-con i soli F,G,H       0
+36 methods implemented of 134 requested = 72.7% of calls
+312 actors of 312 placed enemies find their own behaviour
+  0 scripts crashed      0 left the walkable area while moving
+261 of 312 move on their own, in five seconds, on five maps
 ```
 
-Se `F,G,H` sostituissero, quelle nove mappe resterebbero **senza un nemico**
-nella difficoltà che il walkthrough chiama *«hordes»* — fra loro un piano di
-sotterraneo con 45. E `|F| < |A|` in 29 mappe su 59: il Grass Temple passerebbe
-da 60 nemici a 13, cioè FROM Mode sarebbe più *vuoto*. Si aggiungono.
+The 12% that stand on a cell with no floor **were already there at the
+start** — they belong to session 10's 546 — and those that start on the floor
+never leave it. The 51 that stay still are not a defect: among them are all
+the Togetoge, which the first line of their `Update` freezes until the player
+enters the room.
 
-### Il 4% senza pavimento: la domanda andava divisa per posto, non per specie
-
-Dopo che l'ipotesi del volo era caduta sulla specie, la risposta stava nel
-posto:
-
-```
-in campagna:        0 su 6.097  =  0,0%
-nei sotterranei:  546 su 4.099  = 13,3%
-```
-
-**Zero su seimila.** In campagna il disco mette ogni singolo nemico su una
-cella calpestabile, il che dice che il piazzamento sa dov'è il terreno. Il
-fenomeno è tutto e solo dei sotterranei, e lo condividono gli oggetti di mappa
-(32% contro 0,2%).
-
-L'ipotesi successiva era la più scomoda — uno **scarto di una cella fra la
-griglia e la collisione**, cioè colpa nostra — e il segnale che la suggeriva è
-forte: il pavimento non sta mai a destra né in basso, e dove il vicino con
-pavimento è uno solo sta in alto a sinistra **44 volte su 44**. È stata
-misurata e non regge: spostare *tutti* i nemici di una cella porta i sotterranei
-dall'86,7% all'87,6% di celle calpestabili, e uno scarto vero porterebbe al 99%.
-
-Resta una regola stretta, che è la risposta: **nessuno sborda di più di una
-cella**. Tutte e 546 hanno da uno a tre vicini con pavimento, mai zero e mai
-più di tre, e in 497 casi su 546 quei vicini stanno alla stessa quota. Il
-piazzamento è disegnato sul rettangolo della stanza e trabocca di una cella nel
-muro; in campagna non c'è muro in cui traboccare. Da cui `Columns.ground_near`:
-un nemico senza pavimento si posa su quello accanto, non a zero.
-
-### 5024 è il masso che cade — e lo dice la numerazione dell'album
-
-Nel tratto 5018–5026 lo scarto fra identificativo e numero di modello è
-costante (5016) in **tutte e otto** le voci dichiarate, e 5024 è l'unico buco
-del tratto: quindi `c_enm_08`, che fra i 39 modelli esiste davvero ed è una
-massa bitorzoluta color ocra senza pose.
-
-Il piazzamento concorda da tre parti: sei mappe sole e **tutte d'altura** (Mt.
-Sabre, Sukaboko Highlands, Klovis, Vatara Highlands); celle in righe, da 5 a 28
-caselle di quota; e il terreno che **scende in avanti nel 50% dei casi e in
-nessun'altra direzione**, con la salita alle spalle. Il walkthrough, di
-Sukaboko Highlands: *«a screen with Centauses and **falling rocks**»*.
-
-Ha i sei set di piazzamento come ogni nemico — quindi ricompare — e l'album non
-lo elenca perché un masso non è un mostro da registrare.
-
-### 5080 non è una creatura: è una figura
-
-Né `c_enm_64` né `c_npc_33` esistono, e l'ultimo campo del record vale **1**
-dove i nemici hanno 0 e gli NPC 6. La sua classe non è un nome ma una cifra, e
-la cifra sceglie una forma. La classe `4`:
+**The proof that closes the loop with this morning's loose end.** The class of
+5080 had been read as the axis of movement, from the file's comment plus the
+geometry of the placement. Running the scripts measures the same thing from
+the other end:
 
 ```
-11 figure, 4 vertici ciascuna, 44 celle
-gli angoli sempre a (1,1) (14,1) (1,10) (14,10) dentro lo schermo 16×12
+Togetoge class 1 (horizontal)   displacement  X 2.3   Z 0.0
+Togetoge class 0 (vertical)     displacement  X 0.0   Z 29.2
 ```
 
-I quattro vertici di una schermata rientrati di una cella — uno per tempio più
-cinque nella Dark Tower, nessuno nel Grass. Non sono stanze di boss, e lo dice
-l'assurdo: le mappe dei boss ne hanno **zero**. Dentro ognuna c'è invece
-**esattamente un osservatore**, 11 su 11, e da 10 a 16 nemici.
+Three method decisions are in [`actor.md`](actor.md), and one is worth
+recalling here: **in Lua `0` is true**, so answering zero to an unimplemented
+predicate would give an enemy that always believes it can see the player — a
+behaviour of our own invention. What gives the right answer is the original
+code's naming convention (`Is…` a predicate, `Get…` a number, the rest a
+command), which is regular across all 55 files.
 
-Le classi `0` e `1` disegnano altre figure — una diagonale di cinque celle, tre
-volte — e restano aperte. Ma l'intervallo sopra 5000 non contiene solo
-creature, e questo era il punto.
+`python tools/view.py play d_1_1_1 --cell 39,18 --skip 6` photographs the room
+after six seconds of life: the scorpions have turned and moved, the skeleton
+has walked. `--still` leaves them still.
 
-## Fatto in sessione 9
+### And the inhabitants wander about
 
-La voce ferma da tre sessioni, chiusa — e più larga di com'era scritta. Il TODO
-diceva «`Cancel = {Enable, Index}` dice quale voce sceglie il tasto di
-annullamento, quindi anche il comportamento è dichiarato: manca chi lo esegue».
-Cercando chi lo esegue si è visto che di dichiarato c'è **quasi tutto**, e che
-a mancare erano tre nostre letture.
+Same folder, same hook-up: **33 NPC files**, and `OldManUpdate` is all the
+villages' wandering — a random direction, one cell per second, a radius of
+four cells, and again.
 
-### Una voce è una voce se il cursore ci può stare — [`ui.md`](ui.md), `ui.menus()`
+```
+the castle courtyard: 33 inhabitants, 32 with their own script, 22 wander
+0 errors   0 left the floor
+```
 
-Il criterio non è il **nome** del blocco ma `CursorX`/`CursorY`. Cercando così
-si trovano **23 blocchi per 60 voci** e i nomi sono tre: `Select` sono i 19
-sì/no già noti, ma `Menu` è il menu del titolo e quello di pausa — *RESUME,
-SAVE, LOAD, OPTIONS, SNAPSHOT, ALBUM, BESTIARY, LOADING ART, TITLE* — e
-`ClearMenu` è il titolo **a gioco finito**, con `NEW GAME+` in più.
+**Ten files have no `Update` at all** — the King, the six sages, the
+legendary hero, his ghost, the Medal King — and among the 55 enemies it is
+never missing. The disc declares standing still by an absence, and the
+category is the right one: whoever waits at the end of a temple does not go
+for a stroll. But staying put is not being motionless: `KingInitialize`
+alternates the two poses of the step every half second, which is why
+`AddAnimation` is called even by those who do not move.
 
-Le due liste del titolo condividono le posizioni da 407 in giù: la voce nuova
-non si aggiunge in fondo, il menu **cresce verso l'alto**. E ogni voce porta la
-propria frase di spiegazione, che è l'unico pezzo di interfaccia che cambia al
-muoversi del cursore.
+Fallen out along the way, a hook-up worth having: models 02–08 write
+`NP_NPC05_01` and the others `NP_NPC_09_01`, two conventions on the same disc,
+but **the file's number and the node's coincide 33 times of 33** — the third
+independent confirmation of session 4's archetype→model table.
 
-L'asse non è una scelta: le voci sono incolonnate in **23 blocchi su 23**, zero
-in riga. Il cursore sta 34 px a sinistra e 7 in su, sempre gli stessi, e il
-passo fra due voci è **32 px** — la riga di font con cui in sessione 7 il
-riquadro di dialogo tornava a 597 contro un corpo che finisce a 598. Lo stesso
-numero da un terzo posto.
+And one thing that **nobody declares**, to be marked as ours: an
+inhabitant's initial facing. It is not in the scripts (none of the ten still
+ones calls `SetDirection`) and it is not in the grid (the cells that name an
+NPC carry not a single flag). `facing = 1` is a choice made by
+`walk.populate`.
 
-### Annullare non vuol dire uscire, e l'indice si conta da zero
+But **the placement implies it**, and that can be measured: those who do not
+move always stand higher up the grid than the door you come in by — **11
+cases of 11** indoors, with the King of Dotnia at y=11, the door at y=36 and
+six courtiers lined up in between. You walk towards them, so looking down the
+grid means looking at whoever arrives. It is the convention one expects from
+a game of this kind, but here it is not taken from the genre: it is measured.
+It stays an inference — the data says where they stand, not where they
+look — but it is an inference with an oracle. *(The one exception is a sage
+out in the open overworld, where "the nearest door" is not the entrance to a
+hall and the question does not arise.)*
 
-Tutte e 19 le schermate con `Cancel` hanno le stesse due voci `YES`/`NO` e
-tutte e 19 dichiarano `Index=1`. Contando da uno, annullare vorrebbe dire
-acconsentire **in tutte e 19**; contando da zero è `NO` in tutte e 19. È la
-stessa base di `Start`, che vale 0 per la clip `In`: due campi, la stessa
-convenzione.
+## Session 10
 
-Quindi ○ non chiude la finestra, **sceglie una voce precisa**. E dove
-`Enable=0` non fa niente — sono `ClearSave`, `DeleteSaveDataSelect`,
-`GameOverSaveSelect`, `GameOverResurrectSelect`, cioè le quattro schermate in
-cui il gioco pretende una risposta. Due finestre identiche a vedersi che si
-comportano in modo diverso perché il disco lo dichiara:
+The three loose ends session 8 had isolated, all three closed — and a premise
+that was holding them up, removed.
+
+### "They never overlap" was a tautology
+
+Of the three measurements that said *"A, B, C are three arrangements of the
+same population"*, the most convincing was that their cells never overlap.
+It proves nothing: `mapdat.cells` walks `for i in range(w*h)`, that is **one
+cell, one record**, and each record carries one actor and one letter only.
+Two letters in the same cell **cannot exist in the format**.
+
+The reading does not change — the other two measurements hold — but the tally
+of evidence does, and that is why it is worth checking the premise before the
+result.
+
+### `F,G,H` add to the others, and it is measured by contradiction
+
+It was the last thing written down as an arithmetic inference. Counting the
+maps is enough:
+
+```
+with A,B,C and F,G,H     50
+with only A,B,C           9      the most populated is d_5_1_2, 45 enemies
+with only F,G,H           0
+```
+
+If `F,G,H` replaced the others, those nine maps would be left **without a
+single enemy** in the difficulty the walkthrough calls *"hordes"* — among
+them a dungeon floor with 45. And `|F| < |A|` in 29 maps of 59: the Grass
+Temple would go from 60 enemies to 13, so FROM Mode would be *emptier*. They
+add.
+
+### The 4% with no floor: the question had to be split by place, not by species
+
+After the flight hypothesis had fallen on the species, the answer lay in the
+place:
+
+```
+in the overworld:      0 of 6,097  =  0.0%
+in the dungeons:     546 of 4,099  = 13.3%
+```
+
+**Zero of six thousand.** In the overworld the disc puts every single enemy
+on a walkable cell, which says the placement knows where the ground is. The
+phenomenon belongs entirely and only to the dungeons, and the map objects
+share it (32% against 0.2%).
+
+The next hypothesis was the most uncomfortable one — a **one-cell offset
+between the grid and the collision**, that is, our fault — and the signal that
+suggested it is strong: the floor is never to the right or below, and where
+there is a single neighbour with floor it is up and to the left **44 times of
+44**. It was measured and it does not hold: shifting *all* the enemies by one
+cell takes the dungeons from 86.7% to 87.6% of walkable cells, and a real
+offset would take them to 99%.
+
+What remains is a strict rule, and it is the answer: **nobody spills over by
+more than one cell**. All 546 have from one to three neighbours with floor,
+never zero and never more than three, and in 497 cases of 546 those
+neighbours are at the same height. The placement is drawn on the room's
+rectangle and overflows by one cell into the wall; in the overworld there is
+no wall to overflow into. Hence `Columns.ground_near`: an enemy with no floor
+settles on the one next to it, not at zero.
+
+### 5024 is the falling boulder — and the album's numbering says so
+
+In the stretch 5018–5026 the offset between identifier and model number is
+constant (5016) in **all eight** declared entries, and 5024 is the stretch's
+only gap. Hence `c_enm_08`, which really does exist among the 39 models and is
+a lumpy ochre mass with no poses.
+
+The placement agrees from three sides: six maps only and **all of them high
+ground** (Mt. Sabre, Sukaboko Highlands, Klovis, Vatara Highlands); cells in
+rows, from 5 to 28 cells up; and the ground **slopes down ahead in 50% of the
+cases and in no other direction**, with the rise behind. The walkthrough, on
+Sukaboko Highlands: *"a screen with Centauses and **falling rocks**"*.
+
+It has the six placement sets like every enemy — so it comes back — and the
+album does not list it because a boulder is not a monster to register.
+
+### 5080 is not a creature: it is a figure
+
+Neither `c_enm_64` nor `c_npc_33` exists, and the record's last field is
+**1** where enemies have 0 and NPCs 6. Its class is not a name but a digit,
+and the digit picks a shape. Class `4`:
+
+```
+11 figures, 4 vertices each, 44 cells
+the corners always at (1,1) (14,1) (1,10) (14,10) inside the 16×12 screen
+```
+
+The four corners of a screen, pulled in by one cell — one per temple plus
+five in the Dark Tower, none in the Grass. They are not boss rooms, and the
+contradiction says so: the boss maps have **zero**. Inside each figure there
+is instead **exactly one observer**, 11 of 11, and from 10 to 16 enemies.
+
+Classes `0` and `1` draw other figures — a diagonal of five cells, three
+times — and remain open. But the range above 5000 does not hold only
+creatures, and that was the point.
+
+## Session 9
+
+The item that had been stuck for three sessions, closed — and wider than it
+was written. The TODO said "`Cancel = {Enable, Index}` says which item the
+cancel button chooses, so the behaviour is declared too: what is missing is
+something to run it". Looking for what runs it showed that **almost
+everything** is declared, and that what was missing were three readings of
+ours.
+
+### An item is an item if the cursor can rest on it — [`ui.md`](ui.md), `ui.menus()`
+
+The criterion is not the block's **name** but `CursorX`/`CursorY`. Searching
+that way finds **23 blocks with 60 items**, under three names. `Select` is the
+19 yes/no prompts already known, but `Menu` is the title menu and the pause
+menu — *RESUME, SAVE, LOAD, OPTIONS, SNAPSHOT, ALBUM, BESTIARY, LOADING ART,
+TITLE* — and `ClearMenu` is the title **once the game is finished**, with
+`NEW GAME+` added.
+
+The two title lists share their positions from 407 down: the new item is not
+added at the bottom, the menu **grows upwards**. And every item carries its
+own line of explanation, which is the only piece of interface that changes as
+the cursor moves.
+
+The axis is not a choice: the items are stacked in a column in **23 blocks of
+23**, zero in a row. The cursor sits 34 px to the left and 7 up, always the
+same, and the pitch between two items is **32 px** — the font row with which
+in session 7 the dialogue box came out at 597 against a body that ends at
+598. The same number from a third place.
+
+### Cancelling does not mean leaving, and the index counts from zero
+
+All 19 screens with `Cancel` have the same two items `YES`/`NO`, and all 19
+declare `Index=1`. Counting from one, cancelling would mean agreeing **in all
+19**; counting from zero it is `NO` in all 19. It is the same base as
+`Start`, which is 0 for the `In` clip: two fields, the same convention.
+
+So ○ does not close the window, it **chooses one particular item**. And where
+`Enable=0` it does nothing — `ClearSave`, `DeleteSaveDataSelect`,
+`GameOverSaveSelect`, `GameOverResurrectSelect`, the four screens in which
+the game insists on an answer. Two windows that look identical behave
+differently because the disc declares it:
 
 ```
 python tools/ui.py drive Continue cerchio out.png
-  cerchio  voce 2/2 'NO'  -> scelto 'NO'  (annullando)
+  cerchio  item 2/2 'NO'  -> chosen 'NO'  (cancelling)
 
 python tools/ui.py drive ClearSave cerchio out.png
-  cerchio  voce 1/2 'YES'          il tasto non fa niente
+  cerchio  item 1/2 'YES'          the button does nothing
 ```
 
-Di tutta questa parte resta **nostra una cosa sola**, e si spegne: che
-dall'ultima voce si torni alla prima (`Screen(..., wrap=False)`).
+Of this whole part **only one thing stays ours**, and it is switched off:
+that from the last item you go round to the first (`Screen(...,
+wrap=False)`).
 
-### La barra dei tasti dichiara quali azioni ci sono — `ui.keybar()`
+### The button bar declares which actions there are — `ui.keybar()`
 
-Le scritte stanno nel descrittore, le icone nella scena sotto un nodo
-`KeyAssign`, e si accoppiano perché ogni scritta comincia **7-8 px dopo** la
-fine di un'icona; la striscia è continua, nell'album i sette rettangoli vanno
-da 673 a 1176 senza un buco. A nominare il tasto è **il colore**, che su questo
-hardware *è* il tasto: la ✕ è disegnata blu e la ○ rossa. Il grigio invece non
-separa niente — croce direzionale e dorsali sono senza tinta — e resta un nome
-solo.
+The labels are in the descriptor, the icons in the scene under a `KeyAssign`
+node, and they pair up because every label begins **7-8 px after** the end of
+an icon; the strip is continuous, and in the album the seven rectangles run
+from 673 to 1176 without a gap. What names the button is **the colour**,
+which on this hardware *is* the button: the ✕ is drawn blue and the ○ red.
+Grey, on the other hand, separates nothing — the d-pad and the shoulder
+buttons have no tint — and it stays a single name.
 
-Due cose che il conto dice e che vale la pena tenere: `PAGE` non ha icona
-perché a sfogliare sono le frecce ai lati della pagina, che nella scena sono
-nodi per conto loro; e dove la schermata **scorre** l'accoppiamento non si può
-fare, perché la striscia è parcheggiata fuori campo mentre le scritte sono già
-al proprio posto. Sono le stesse 5 schermate di sempre.
+Two things the count says that are worth keeping. `PAGE` has no icon because
+paging is done by the arrows at the sides of the page, which are nodes of
+their own in the scene. And where the screen **scrolls** the pairing cannot be
+done, because the strip is parked off-screen while the labels are already in
+place. Those are the same 5 screens as always.
 
-### La pagina è il piano, con il segno — `ui.pages()`, `ui.dungeon_floors()`
+### The page is the floor, with its sign — `ui.pages()`, `ui.dungeon_floors()`
 
-`setting = {pageMin, pageMax}` era un campo mai guardato. Sulle mappe dei
-sotterranei quel numero è il piano e il segno dice da che parte: `B1` è −1,
-`1F` è 0. Due conti indipendenti:
-
-```
-pageMax - pageMin + 1  =  numero di descrittori di piano    7 sotterranei su 7
-le etichette stampate (B2, 5F) cadono nel proprio intervallo      19 su 19
-```
-
-I due che restano fuori sono i sotterranei a **un piano solo**, che dichiarano
-`0..0` e `1..1` pur essendo tutti e due `B1`: dove non c'è niente da sfogliare
-il campo non è mantenuto.
-
-La successione dei file non è quella dei piani — il sotterraneo 5 li tiene
-nell'ordine `1F`, `2F`, `B1` — e il primo descrittore **non dichiara il
-proprio** piano, perché elenca tutte le etichette per disegnare il selettore.
-Il suo si ricava per differenza: è quello che gli altri non hanno preso, e
-torna in tutti e cinque i sotterranei a più piani. Tutti e **21 i piani** hanno
-ora il proprio nome, e in `play` la mappa si sfoglia con le frecce.
-
-### Il testo c'era e non si vedeva: tre difetti, uno dentro l'altro
-
-**Le tabelle permissive servivano anche in `descriptors()`.** 11 file cadevano
-in silenzio su una costante nativa: **17 schermate** in meno, fra cui l'album
-dei nemici e tutte e sette le mappe dei sotterranei. Sono 136, non 119. La
-soluzione era già scritta in `descriptor_file()` da una sessione.
-
-**I file sono UTF-8 nei dati e Shift-JIS nei commenti.** Gli autori hanno
-lasciato le note nella codifica di casa — 21 file su 618, e il byte guasto sta
-sempre subito dopo un `--`. Il ripiego «se UTF-8 non va, rileggi tutto in
-Shift-JIS» buttava via l'intero file per colpa di una nota, e fra quei 21 c'è
-`all.lua.eu`, che da solo dichiara quasi tutte le schermate: le scritte
-tornavano indietro stroppiate, **319 su 358**.
-
-**E allora si è visto quante scritte il disco colloca.** Sono **432**, e se ne
-disegnavano **85**, perché si guardava dentro `Message` e `Select` e basta. Una
-scritta si riconosce dal fatto che ha un testo **e** un posto: i 61 blocchi
-senza `X`/`Y` sono elenchi di dati, cioè nomi che un'altra parte della
-schermata andrà a pescare.
-
-Da cui la mappa del sotterraneo, che era muta, ora dice «Dark Tower» e «3F».
-
-*Il difetto ha la stessa forma delle due scoperte precedenti — in sessione 6 un
-dato che sembrava vuoto era solo chiuso, in sessione 7 un pezzo che sembrava
-acceso era solo spento — ma stavolta la causa era **tutta nostra**: il disco
-diceva le cose, e noi leggevamo male il file.*
-
-### Il cursore non era nostro, e il suo posto misura il testo
-
-Era l'ultimo pezzo che ci disegnavamo a mano, e la scena lo porta in due modi:
-**parcheggiato all'origine** in 7 blocchi su 8 (un `Cursor_01` di 16 px, da
-mettere dove dice `CursorX`), e **uno per riga già collocato** nel menu di
-pausa, nove marcatori alle posizioni che il descrittore dichiara voce per voce
-— 530 contro 529, 86 contro 84. Nel secondo caso vanno spenti gli altri otto,
-che è la stessa forma della mappa del sotterraneo.
-
-E il cursore dà l'oracolo su **due numeri nostri tarati a occhio**: la cella
-del font è 32×32, e il descrittore mette il cursore 7 px sotto la scritta —
-alto 16 dentro una riga di 32, cade in mezzo. Quindi `Y` è il bordo **alto**
-della riga e la scala del font è **1**, non 1,4. Il cursore cade in mezzo alla
-riga a meno di 6 px su 30 voci, e combacia con il conto del riquadro di
-dialogo di sessione 7 (`485 + 3×32 + 2×8 = 597` contro un corpo che finisce a
-598): la stessa altezza di riga per due strade che non si conoscono.
-
-### Il seguito di una schermata è dichiarato due volte su 136
-
-Cercandolo prima di dichiararlo assente: `Pause` apre `PauseTitleSelect`, e
-`GameOver` apre `GameOverSaveSelect` e `GameOverResurrectSelect` — un campo in
-fondo alla tabella con la chiave uguale al valore. Tutte e tre sono la
-**finestra di conferma** di una scelta che non si torna indietro. Dove il
-seguito è una domanda il disco lo dice; dove è un'altra schermata, no.
-
-## Fatto in sessione 8
-
-La prima voce del TODO precedente, chiusa — e con essa tre censimenti che il
-progetto teneva separati, perché si è scoperto che li tiene insieme **un solo
-campo**. Poi, per la prima volta, una validazione contro una fonte esterna.
-
-### Il campo +0x10 è l'attore — [`walk.md`](walk.md), `mapdat.actor()`
-
-Il record di cella ha sei campi numerici e cinque erano marcati `?` da cinque
-sessioni. Il quinto è **chi vive lì**, con una numerazione globale al gioco, e
-a partirla sono tre file che non si conoscono: gli oggetti sotto 5000 (costante
-per classe, **175 su 195**), i nemici che l'album `EnemyView` dichiara
-(**45 su 46** si ritrovano piazzati), e gli NPC su **5047 + NN** con `NN`
-l'indice di `c_npc_NN` (**226 celle su 240**, 94,2%).
-
-L'ultima è la più bella perché è un oracolo *in più* su una conclusione già
-presa: che `n05` fosse `c_npc_05` la sessione 4 l'aveva dedotto dai nomi dei
-237 script `npcevent_`, e qui venti valori consecutivi lo ripetono da soli. Le
-eccezioni cadono **tutte** su `c_npc_19`…`c_npc_26`, cioè proprio i modelli che
-quella deduzione risolveva peggio: il disaccordo indica il punto debole della
-nostra rubrica, non del disco.
-
-Restano non attribuiti gli 8.781 valori sotto 4000.
-
-Caduto lungo la strada anche un secondo campo: +0x08 e +0x0C sono lo **stesso
-numero in due codifiche**, `257·n` e `2ⁿ`, senza una coppia fuori schema.
-
-### I nemici sono sul disco, e le sei lettere sono due terne
-
-«Resta al codice solo quanti ne mette per stanza e con che regola» era scritto
-qui, ed era sbagliato: la griglia piazza **10.196 nemici**, uno per cella. E
-ogni cella porta un **set**, `-sA`…`-sH`, che era una stringa mai vista in
-nessun documento del progetto.
-
-**A, B, C sono tre disposizioni alternative della stessa popolazione**, e lo
-dicono tre misure che sbagliano in modi diversi: stesse specie in **58 mappe su
-59**, equinumerose su tutto il disco (1807/1824/1804), e celle che non si
-sovrappongono **mai** pur coprendo la stessa area (88%, sopra l'80% in 51 mappe
-su 59, sotto il 40% in nessuna — quindi non sono squadre). Nel Grass Temple
-l'identità è specie per specie: 13 Soldier Bones, 10 Scorpion, 15 Bat, 22 Red
-Slime, tre volte.
-
-**F, G, H sono le stesse tre per FROM Mode** — e la lettera lo dice, `F` sta per
-FROM. Lì il parallelismo si rompe, ed è giusto: in `FIELD_16` 36/47/45 contro
-19/19/19, sette specie contro quattro.
-
-### E i nemici sono entrati nel gioco — `view.py play --spawn`
-
-`Walk.populate_enemies()` li mette in mappa, e il disegnatore non ha avuto
-bisogno di una riga: un'entità con modello `c_enm_01` cerca il nodo
-`c_enm_01_01`, che è esattamente ciò che l'album dichiara in `NodeStrings`.
-L'unica traduzione è togliere da quel nome la posa, perché l'album nomina un
-**fotogramma** e nel mondo serve la radice — che è poi la conferma, da un terzo
-file, del «i figli di un nodo sono pose intere» di sessione 4.
-
-La verifica è di riconoscibilità, ed è passata tre volte:
-
-- nel tempio dell'erba, alla cella (39,18), compaiono **due Scorpion e un
-  Soldier Bones** — due scorpioni rossi e uno scheletro con la spada, che è
-  esattamente ciò che le celle attorno dichiarano;
-- **cambiando `--spawn` da A a C**, nello stesso punto, ci sono di nuovo due
-  Scorpion e un Soldier Bones (più due Red Slime), **in posti del tutto
-  diversi**. L'ipotesi dei tre piazzamenti si guarda invece di leggerla;
-- in `field_16` con `--spawn F` la campagna verde si popola di Spidel e Goble.
-
-E una misura che il render ha suggerito e che vale più del render, perché mette
-alla prova la frase più specifica del walkthrough — *«even enemies that are
-normally restricted to dungeons»*:
+`setting = {pageMin, pageMax}` was a field nobody had looked at. On the
+dungeon maps that number is the floor, and the sign says which way: `B1` is
+−1, `1F` is 0. Two independent counts:
 
 ```
-A,B,C in campagna:  2.195 nemici,    12 di specie da sotterraneo =  0,5%
-F,G,H in campagna:  3.902 nemici, 1.356 di specie da sotterraneo = 34,8%
+pageMax - pageMin + 1  =  number of floor descriptors      7 dungeons of 7
+the printed labels (B2, 5F) fall in their own range         19 of 19
 ```
 
-Settanta volte tanto, e 17 specie contro 3. Non è una preferenza statistica: è
-la difficoltà che si dichiara nel dato.
-
-### I dodici nemici scritti in Lua — `entity.enemy_motion()`
-
-Il gioco implementa i nemici in C++, ma il disco ne porta dodici per esteso:
-gli attori del minigioco Block Defence riusano i modelli veri **per numero**,
-e `MGBee` carica `EN_ENEMY_06_04_a`, che è il `NodeStrings` di `Killer Bee`.
-L'aggancio si verifica sui **nomi**, che nessuno dei due file prende dall'altro
-— `MGSkelton`→*Soldier Bones*, `MGWood`→*Evil Tree*, `MGHagureSlime`→*Crystal
-Slime*: **dodici su dodici**.
-
-Tre numeri che erano da inventare e ora si leggono: il **periodo** del
-fotogramma (`StepWait`, 0,3 in tutti e dodici — il nostro era 0,25 e non veniva
-da nessun dato), **le pose del ciclo**, e **chi vola**.
-
-Le pose hanno scoperto un difetto nostro: `Entity.pose()` restituiva sempre
-`02_a`/`02_b`, ma **12 modelli `c_enm` su 37** non hanno affatto `02_a` —
-quattro camminano con `04` e otto non hanno nessun paio. Un terzo dei nemici
-restava fermo perché cercavamo una posa inesistente. Ora il ciclo lo dichiara
-il minigioco dove c'è, e altrimenti il modello stesso.
-
-E una regola valida su **tutti e 22** gli attori, zero eccezioni: *se il
-modello ha due pose appaiate `_a`/`_b` il ciclo lo fa il motore, altrimenti
-l'attore le alterna a mano.* È la controprova, da un file scritto per un
-minigioco, del «`_a` e `_b` sono i due passi» dedotto in sessione 4 dalla sola
-geometria.
-
-**Un'ipotesi caduta, e vale perché era misurabile solo adesso.** Avere `Type`
-(terra/aria) permetteva di spiegare il 4% di nemici piazzati senza pavimento
-sotto. Non lo spiega: volanti 2,3%, terrestri 4,0% — se mai il verso è
-l'opposto, e chi manca il pavimento più spesso è Clay Golem (17%), che cammina,
-mentre Killer Bee sta a terra nel 100% dei casi. Resta aperto.
-
-Il **pattugliamento** invece non si legge: nel minigioco i nemici camminano
-verso la torre con un `BlockDefenceMove()` nativo, che di quel minigioco è la
-regola. Lasciato non implementato invece che inventato.
-
-### Il pattugliamento non c'è, e cercarlo ha dato i nomi dei posti
-
-`MapParameter.lua.eu` era l'ultimo posto da guardare prima di inventare il moto
-dei nemici, e non contiene niente sul moto — né lo contiene l'API, che ha
-`PlayEnemy`, `PauseEnemy`, `visibleEnemy`: congelare e mostrare, mai muovere.
-**Il pattugliamento non è dichiarato in chiaro da nessuna parte**, e resta non
-implementato invece che inventato.
-
-Ma quel file dichiara **211 mappe con il nome del posto e il brano**, e ne
-aggancia **168 delle nostre 170** (le due che restano sono `field_99` e
-`field_test`). 55 località per 168 mappe, cioè un posto occupa più schermate:
-attraversare `field_6` e `field_7` è restare a "Klovis". Ora `play` dice dove
-si è. E `field_3` si chiama **"Nialliv Valley"**, cioè *Villain* al contrario.
-
-Conferma a costo zero: `d_1_1_1` è **"Grass Temple"** e `d_6_1_3` **"Wind
-Temple"**, quindi `DUNGEON_EARO` = vento lo dice ora un **quarto** file, in
-inglese.
-
-### `LivingId` è la famiglia, non la casa — una nostra lettura corretta
-
-Con il nome del tempio e il piazzamento vero insieme, si è potuta mettere alla
-prova una frase che i documenti davano per buona: 1.988 nemici piazzati nei
-templi, e il loro `LivingId` nomina il tempio in cui stanno **nel 47,1%**. Con
-sette habitat il caso darebbe il 14%, quindi la correlazione è forte; ma non è
-una regola, e il Flame Temple è pieno di `DUNGEON_WATER`. L'habitat classifica
-il nemico, non lo colloca — era il miglior surrogato finché il piazzamento non
-si sapeva leggere.
-
-E una lettura che ne esce: **la Dark Tower non ha un habitat proprio, li
-attraversa tutti** — piano per piano l'habitat prevalente fa GRASS, GRASS,
-SANDS, WATER, WATER, EARO, cioè 1, 1, 3, 4, 4, 6 nell'ordine in cui il gioco fa
-visitare i templi. Una successione non decrescente: la torre finale ripercorre
-il viaggio.
-
-### La validazione esterna, che è la novità di metodo
-
-Un [walkthrough](walkthrough/) — scritto per giocare, non per leggere byte,
-quindi con errori tutti suoi — ha confermato quattro cose che avevamo dedotto
-dai soli byte, e nessuna era stata cercata:
-
-- *«If the enemy positions are annoying, you can leave the room and come back
-  and see if they respawn in a more favorable location»* → i set `A`/`B`/`C`;
-- *«all kinds of crazy enemies spawn all over the place — even enemies that are
-  normally restricted to dungeons»* → il profilo di `F`/`G`/`H`;
-- *«Crystal Slimes and Blue Dragons spawn rarely… they can actually spawn
-  anywhere»* → **5075** e **5076** sono gli **unici due dei 46** con
-  `LivingId = -1`, cioè senza habitat. Il campo che li distingue nel dato è lo
-  stesso che li distingue nel gioco;
-- gli otto boss con il loro tempio, **otto su otto** contro gli habitat
-  dell'album — e con essi cade l'ultimo dubbio su `EARO`, che è *aero*.
-
-E una lettura che il dato dava già senza saperlo: i boss si riconoscono perché
-hanno **2 celle su 1 mappa e nessun `-s`**. Un boss non ha piazzamenti
-alternativi perché sta in una stanza sola.
-
-### I 25 nomi di evento erano funzioni, non file — `Grid.triggers`
-
-«Solo 3 nomi su 25 trovano il file» diceva il TODO. A sbagliare era la ricerca:
-`gimmick_grass4` è una **funzione** dentro `gimmick_grass.lua.eu`, insieme agli
-altri sei `gimmick_grass`. Cercate così si risolvono **25 su 25**.
-
-Sono grilletti di posizione, e il corpo lo conferma: guardia
-`if GetEventFlag(167)==1 then return end`, `LockPlayer`, la fata che spiega
-l'interruttore, `UnlockPlayer`. Girano sull'host della Fase 4 senza aggiungere
-un metodo. Cinque dei 25 stanno nello stesso file e sono le quattro direzioni
-più il centro: `mainevent_herodream` `n`, `s`, `e`, `w`, `2`.
-
-### Cosa fanno gli oggetti: parametrizzato in chiaro, implementato in C++
-
-`GameParamData/gimmickParam.lua.eu` dichiara quindici gimmick con i parametri e
-i commenti degli autori — `Hole` con `gravity 18.0` e `pop_count 1`,
-`BlackHole` con `vacuum_range 6.4`, `TargetSwitch` con il valore di clamp «di
-quando la freccia si conficca», `stone_monument` con i suoi due messaggi. Il
-walkthrough valida anche questi, e uno parola per parola: la lastra di
-`stone_monument` è quella di Parallax, e i nostri dodici `Stonemark` stanno
-nelle stanze in cui la guida dice di lanciarlo.
-
-La **logica** resta nel codice, ma la sua forma la conosciamo: il disco porta
-34 attori scritti in Lua per il minigioco Block Defence, con tutti e quattro i
-callback del contratto (`Initialize`, `Update`, `CheckMove`, `CheckCollision`),
-e fra loro c'è `75MGBombRock` — il muro che la bomba apre, scritto per esteso.
-`MR_BLOCK` e `MR_NONE` non compaiono altrove sul disco.
-
-## Fatto in sessione 7
-
-La voce in cima al TODO precedente, chiusa — ma non come era scritta. La
-domanda era «o si ricostruisce il moto interpolando fra il parcheggio e il
-posto, o è la prima cosa da chiedere all'EBOOT», e la risposta è che erano
-**due animazioni diverse** messe in una voce sola: una ha tutti e due gli
-estremi sul disco, l'altra ne ha uno.
-
-### `Start` non è un tempo, è un indice — [`ui.md`](ui.md), `ui.py clips`
-
-Le quattro clip si leggevano come inizio e durata su una linea del tempo. Il
-conto dice altro: su 36 schermate che dichiarano `In`, `Start` vale **0 tutte e
-36 le volte**; `Main` vale 1 tutte e 33; `Out` vale 2 tutte e 36. Un tempo che
-non cambia mai non è un tempo — è la posizione in una tabella di clip, e a
-determinarla è il nome. `Size` invece varia ed è la durata in secondi.
-
-Le schermate grosse lo confermano, e dicono anche cosa indicizza: in `Option`
-gli indici vanno da 0 a 38, densi, e i tre pannelli `Display`, `Sound`,
-`Message` **condividono** il blocco 3–9 tenendo separati solo i propri 0–2,
-20–22, 23–25. Cioè la zona dei messaggi, la barra dei tasti e il cursore sono
-gli stessi oggetti riusati: l'indice non identifica un momento, identifica **la
-cosa che si muove**.
-
-I dieci indici 10–19 sembravano un buco ed erano un difetto di lettura nostro:
-`Volume` è un **array** e non un dizionario, e chi scende solo nei dizionari lo
-salta. Sono le dieci tacche del volume, e la scena ha esattamente dieci nodi
-`Volume00…Volume09`.
-
-### L'apertura si ricostruisce, perché il disco ha tutti e due gli estremi
-
-Il pezzo è esportato con la scala a zero e la mesh sotto è intera, quindi da 0
-a 1 c'è tutto; la durata la dichiara `Size`. `unfold` non è più un interruttore
-ma un **fattore**, e `ui.py anim` fa i fotogrammi.
-
-La finestra si apre come un televisore che si accende, e a dirlo è la scena:
-`Confirm_01` è tre pezzi, `a` (505×4) e `c` (505×7) con **scala X = 0** e il
-corpo `b` (505×99) con **scala Y = 0** — prima una riga orizzontale, poi il
-corpo in verticale. Quale asse si apre lo dichiara quale scala è nulla. L'unica
-cosa non letta è la curva, e qui è lineare per non aggiungere un numero
-inventato.
-
-### Lo scorrimento invece ha un estremo solo, e sono 15 pezzi
-
-Le schermate a scorrimento non sono chiuse da una scala: sono **spostate**.
-Sul disco c'è solo il parcheggio — `Window01` a `x=-600`, `Window03` a `x=1300`,
-`Message` a `x=1285`.
-
-Il moto è orizzontale, ed è misurato: **38 pezzi parcheggiati fuori campo, 33
-fuori solo in X**. La Y è già quella definitiva, e lo conferma il descrittore
-per un'altra strada — colloca «EQUIPMENT» a y=53 dentro `Window01` (48–294),
-«ITEMS» a y=308 dentro `Window02` (303–550), i tasti a y=635 dentro la barra
-(632–666).
-
-Ma **dove atterrino in X non sta da nessuna parte**: non nella scena, che ha
-solo il parcheggio, e non nel descrittore, che colloca il contenuto e non il
-contenitore. Interpolare fra parcheggio e posto non si può, perché il posto
-manca. È questa e solo questa la parte da chiedere all'EBOOT, e riguarda
-**5 schermate e 15 pezzi**: `Item`, `Orb`, `Option`, `NameEntry`, `GameOver`.
-
-### Il riquadro di dialogo, e il file che non era quello — [`ui.md`](ui.md)
-
-Era l'ultimo pezzo disegnato da noi, e il TODO lo dava in `data/Balloon`. Non
-è lì: `balloon_eng.ps3.dsb` sono tre quadri di **1,6 × 0,6 unità di mondo** —
-1,6 è la casella — con materiali `CHECK`, `TALK`, `OPEN`, e le texture sono tre
-fumetti con il tasto ✕ e la codina in giù. È il cartello che galleggia sopra la
-testa. Stessa forma dell'errore di `Priest.ps3.dsb`: un nome che convince, e una
-misura che lo smentisce.
-
-Il riquadro sta in **`UserInterface/Message`**, con la stessa struttura a tre
-pezzi di tutte le finestre — `Message_a/b/c` (505 × 138) e `MessageBig_a/b/c`
-(686 × 154) — più `Advance_Cursor`, la freccia del «premi per continuare». Il
-descrittore mette il resto: `Line=3`, l'origine del testo (`X`/`Y` e
-`LargeX`/`LargeY`), l'interlinea, i colori e **dieci velocità di battitura**.
-
-I numeri si incastrano, ed è la verifica: il font a scala 1 misura 32 px per
-riga, quindi `485 + 3×32 + 2×8 = 597` e il corpo finisce a **598**. Da lì si
-legge anche che `Space` è l'interlinea *fra* le righe e non su ognuna —
-sommandola all'ultima si sfora di sette pixel. Ora `view.py` sceglie fra le due
-misure quella in cui il testo ci sta, e la mette dove il disco dice.
-
-### E i cartelli sono diventati il segnale «qui puoi parlare»
-
-Trovato il file per sbaglio, l'oggetto si è rivelato quello che mancava al giro
-di gioco: `play` non aveva modo di dire al giocatore dove premere. Ora il
-cartello `TALK` sta sopra la testa di chi si ha davanti, e **solo se ha
-qualcosa da dire** — è un invito a premere, non una decorazione.
-
-Costa niente perché si aggancia a `EntityGroup`, che legge la matrice al
-momento del disegno: una geometria sola nel batch, un'entità finta che ogni
-fotogramma prende il posto di chi si ha davanti, e la matrice nulla a spegnerla.
-L'angolo lo dà la camera, perché un cartello si legge sempre di fronte.
-
-### Il corpo del riquadro piccolo è trasparente, ed è giusto così
-
-Nel render il mondo si vede attraverso il riquadro di dialogo, e sembrava un
-difetto di composizione. L'alfa dice il contrario: il corpo del riquadro
-**piccolo** ha alfa media 19, cioè è vuoto, mentre quello **grande** sta a 214,
-nero pieno. Il dialogo con un abitante sono due righe sottili e il testo sopra
-il mondo; il pannello opaco è l'altra misura. *Prima di correggere una
-trasparenza, misurarla: qui era il dato.*
-
-### I nemici, e l'album che li dichiara tutti — [`entities.md`](entities.md)
-
-Il TODO diceva di guardare i parametri delle celle `EnemyObserver` prima di
-concludere che serve l'EBOOT. Quelle celle non portano nemici: 65 celle con un
-`-gNNN` e basta, cioè **un numero di stanza**, e i cinque campi numerici sono
-gli stessi di un `observer` qualsiasi.
-
-Il censimento sta altrove ed è in chiaro. L'**album dei nemici**
-(`UserInterface/EnemyView`) è un descrittore come gli altri e dichiara **46
-nemici** con identificativo (5002–5082), modello, nome inglese, habitat e cosa
-lasciano cadere. I modelli si risolvono **46 su 46**: 37 sono nodi dentro
-`Character/c_obj_all.ps3.dsb` — la stessa forma degli NPC — e i 9 boss hanno un
-file per uno. `view.py char c_enm_01` disegna un coniglio viola con le corna
-rosse: ツノウサギ nel commento, `Killer Rabbit` nel descrittore.
-
-I quindici habitat sono `FIELD_*` e `DUNGEON_*` per elemento, e i sette
-sotterranei combaciano uno a uno con i sette templi di `Item.lua.eu`
-(`DUNGEON_EARO` è *aero*, il vento). Quindi **quale nemico appartiene a quale
-sotterraneo si sa senza l'EBOOT**; resta al codice solo quanti ne mette per
-stanza e con che regola.
-
-*(Corretto in sessione 8: non resta al codice. La griglia piazza i nemici cella
-per cella, 10.196 in tutto, con la specie nel campo +0x10 e il set in `-sA`…
-`-sH`. Vedi sopra.)*
-
-Il primo tentativo è fallito e vale la pena dirlo: senza le **tabelle
-permissive** il descrittore non gira, perché nomina costanti native (`LIVING`,
-`GameDataFlags`, `item`) che nessuno script definisce — e la tabella sembra non
-esserci. `ui.descriptor_file` ora carica `host.BOOT`, che quella soluzione la
-aveva già.
-
-### Gli oggetti di mappa dichiarano la stanza — [`walk.md`](walk.md), `Grid.rooms`
-
-La forma della stringa divide le celle in due famiglie: `-gN;` da solo
-(`SwitchObserver` 80, `EnemyObserver` 65) e `-gN;-oM;` in coppia. E dentro la
-coppia, dove i due numeri sono **uguali** la cella si ritrova su un'altra mappa
-— `WarpDoor` 29 su 29, `destructionWall` 43 su 46 — cioè quelli sono passaggi,
-ed è perché `walkabout` li attraversava già.
-
-**L'ipotesi scritta qui era sbagliata.** «Il `PitFall` ha una coppia come i
-passaggi, quindi cadere è arrivare»: provata, la coppia si ritrova 2 volte su
-21, e quella del `BlackHole` 3 su 7. Né il solo `-g` né il solo `-o` risolvono:
-ricadono su venti celle per volta, cioè collezionano invece di indirizzare.
-
-**Il numero è `(piano)(stanza)`**, e a dirlo sono due file che non si
-conoscono: la prima cifra è il piano scritto nel **nome del file** (2.484
-varchi su 2.490, 99,8%), e le stanze che ne escono sono quelle che i
-descrittori `dungeonMapNN_MM` disegnano come `room_on_NN` — **404 su 413**, con
-14 piani su 21 esatti.
-
-Una bella lettura caduta lungo la strada: i sette buchi neri della torre oscura
-stanno uno per piano e la prima cifra dei loro varchi va 1, 2, 3, 4, 5, 6, 7.
-Sembravano i sette templi, e la torre che si apre sui sotterranei sarebbe stata
-una spiegazione elegante. Nessuna di quelle coppie esiste nel sotterraneo che
-la cifra nomina: **0 su 7**. La cifra era il piano su cui la cella sta.
-
-### La mappa del sotterraneo si disegna — [`ui.md`](ui.md), `ui.py map`
-
-Era in «cosa manca» come schermata con contenuto dinamico, che aspetta dati di
-partita inesistenti. I dati sono arrivati dalla voce qui sopra: la griglia
-dichiara la stanza di ogni cella, e la scena ha un pezzo per stanza e per
-stato. `ui.py map 1 1 out.png --seen 1,2,3 --here 4` disegna il piano con le
-stanze viste accese, quella corrente più chiara e le altre nere.
-
-E il descrittore conferma la lettura delle stanze da un terzo file, nominando i
-campi che nella griglia sono cifre mute: le porte dichiarano `groupId` e
-`objectId`, che sono il `-g` e il `-o`, con `groupId=12` per il piano 1 stanza 2.
-
-**I tre stati non sono tre disegni: sono un colore.** `room_on_02`,
-`room_off_02` e `room_still_02` hanno la stessa mesh, la stessa posizione, le
-stesse UV e la stessa texture, e a distinguerli è il `diffuse` del materiale —
-1,0 / 0,5 / 0,0. Il difetto che questo ha scoperto è generale: il compositore
-guardava la sola texture e buttava via il colore del materiale su **ogni**
-schermata. Ora lo moltiplica — e il difetto era grosso, perché la tinta è il
-modo in cui questa interfaccia dichiara gli stati: **49 scene su 115** hanno
-nodi tinti, 1.869 in tutto, di cui **891 a 0,0** (spenti del tutto) e 864 a
-0,5. Ottocentonovantuno pezzi che devono essere neri venivano disegnati a
-piena luce.
-
-### La mappa entra nel gioco, e tre strade che non portano da nessuna parte
-
-`view.py play <mappa> --map`, o `M` mentre si cammina: la mappa del piano su cui
-si sta, sopra la scena. Nel tempio del vento il selettore dei piani a sinistra
-accende il terzo slot su cinque, che è il piano giusto — e lo fa da sé, perché
-sta nella scena del descrittore.
-
-Quello che **non** si può fare è dire in quale stanza si è, e non per pigrizia:
-
-- «la stanza è uno schermo» — la scatola delle celle marcate sta in 16×12 nel
-  95,4% dei casi, ma solo 305 stanze su 416 cadono in un blocco allineato;
-- «il tag di regione è la stanza» — no: in `d_1_1_1` tutte e 23 le stanze
-  portano lo stesso tag `2001`, che è il **sotterraneo**;
-- «il marcatore più vicino» — le scatole non si sovrappongono (1,3%) ma coprono
-  il 12% della mappa, e dove la risposta è certa il marcatore più vicino azzecca
-  il **75,7%**: rumore con una preferenza.
-
-Il quadro che ne esce è però coerente, ed è un risultato: gli osservatori sono
-i **grilletti d'ingresso** con cui il motore registra in che stanza sei — per
-questo sono radi e due su tre stanno dentro il solido invece che sul pavimento.
-La regione non serve a nessuno tranne a noi, quindi non è dichiarata.
-
-### Il formato `EDT`, il cuore identitario — [`format_edt.md`](format_edt.md)
-
-`EDTFILE1.9`, i personaggi disegnati dot per dot. Risolto con lo stesso oracolo
-di sempre: **90 file su 90 finiscono esattamente sull'ultimo byte**, per
-260.860 voxel. Tutto big-endian e **senza allineamento** — un flusso di byte,
-dove una stringa dispari sposta di uno tutto il resto.
-
-Il voxel è 20 byte: posizione impacchettata più RGB più una finitura (0–6). E i
-tre byte della posizione stanno **tutti fra 0 e 15**, cioè un cubo di
-**16×16×16** — che è la griglia di `water_col.dds`, sedici dot per casella,
-trovata in sessione 5 per tutt'altra ragione. Tre file che non si conoscono,
-la stessa unità.
-
-**Le sei parti sono sei pose.** I conti di `angel.edt` — 261, 256, 246, 240,
-263, 267 — sono troppo vicini per essere sei pezzi di un corpo, e la misura
-chiude: il **60,4%** dei voxel sta nella stessa posizione fra la prima parte e
-le altre cinque. È il «i personaggi non hanno scheletro, i figli di un nodo
-sono fotogrammi interi» di sessione 4, visto dall'altra parte.
-
-La verifica è il provino a contatto: 90 personaggi riconoscibili — cavalieri,
-maghi, Babbo Natale, un re con la corona, draghi, scheletri, un orso, una
-zucca — e i preset tornano col proprio nome di file, `angel` con l'aureola e le
-ali, `black_smith` con la barba bianca e il grembiule, `boxer` coi guantoni.
-
-**E il primo provino usciva di spalle**, cosa che ha visto chi lo guardava
-senza sapere cosa aspettarsi. Non era un difetto: prendendo la Z massima si
-ottengono le nuche, prendendo la minima le facce — cioè i personaggi
-dell'editor sono authorati **verso −Z**, la stessa convenzione che
-`entities.md` aveva dedotto in un'altra sessione dalle mesh del gioco. Due file
-scritti per scopi diversi, la stessa scelta. E si misura senza guardare: in
-`black_smith.edt` il piano davanti porta 9 voxel e quello dietro 40, perché una
-faccia è incavata e una nuca è piena.
-
-Una sola cosa il primo percorso l'ha sbagliata, e si è corretta da sé: si
-fermava 24 byte prima della fine. Ventiquattro è esattamente sei float — la
-coda di parte, che c'è anche dopo l'ultima.
-
-### Un'ipotesi caduta, che vale la pena tenere
-
-I nodi `_PIVOT` sembravano dichiarare l'ancora della crescita, e il test
-«per ogni pezzo a scala zero la mesh ha un bordo esattamente a 0 sull'asse
-azzerato» dà l'**87,3%** — che sembra molto finché non si misura il controllo
-sui pezzi a scala piena, che dà il **76%**. Non è un oracolo, è rumore con una
-preferenza. E le eccezioni dicono perché: `NEW-node` di `EnemyAlbum` misura
-`[-61,5, +61,5]`, cioè è **centrato** sull'origine e cresce dal centro.
-L'ancora non è il bordo, è dove cade l'origine — che è solo come funziona una
-scala, non una scoperta.
-
-## Fatto in sessione 6
-
-Le due voci in cima al TODO precedente, chiuse tutte e due — e la prima ha
-aperto la seconda, che non era in programma per questa via.
-
-### I 22 passaggi senza un arrivo calpestabile: erano zero letture sbagliate
-
-Erano 19 arrivi non calpestabili più 3 passaggi la cui destinazione non esiste
-sul disco. La domanda giusta si è rivelata la prima che si è posta: **c'è un
-triangolo di collisione sopra quella cella?** Sì, in tutti e 19, e in diversi
-casi che guardano pure in su. Quindi la collisione c'era e a mancarla era la
-nostra lettura, in **tre** modi diversi — tutti e tre numeri assunti invece che
-misurati:
-
-- **la colonna era ancorata a zero.** 69 file di collisione su 171 scendono
-  sotto, e il pavimento di `d_1_2` sta a `−0,000002`: uno zero appena negativo,
-  lo scarto di un `float32` passato per una somma baricentrica. I 114 punti che
-  cadevano nella cella d'ingresso del primo passaggio del gioco venivano
-  buttati tutti e 114.
-- **la colonna era alta 25,6 unità.** `FIELD_07` è una montagna e arriva a
-  51,2: la cima veniva troncata.
-- **la semina aveva un tetto di 96 suddivisioni**, che sembrava la scelta
-  prudente. In `FIELD_07` 2.238 triangoli su 6.747 superano le 38,4 unità — il
-  lato più lungo ne misura 190 — e per loro il passo diventava 2,0, cioè più
-  largo di una casella: lasciava scoperte celle intere. Senza tetto costa il
-  27% di punti in più su tutto il disco e non lascia buchi.
-
-Ora base e altezza le dichiara la mesh, e i passaggi raggiunti con l'arrivo in
-piedi sono **365 su 369**: i quattro che restano hanno la mappa di destinazione
-assente dal disco.
-
-### Il fondale, e il fatto che rimettere i piani giusti abbia peggiorato tutto
-
-Rimessi i piani sotto lo zero, la misura è scesa dal 63% al 41%. Sotto ogni
-mappa di campagna c'è un unico quadrilatero piatto steso da parte a parte — in
-`FIELD_22` sono **due triangoli** per 10.368 caselle su 16.384 — a −3,2. Guarda
-in su, quindi è un pavimento a tutti gli effetti; solo che sopra ha metri di
-roccia, ed essendo il più basso è quello da cui la mappa comincia. `field_30`
-scendeva a 84 celle percorse su 10.219.
-
-A separarlo da un pavimento vero è un conto, non una soglia: le celle a due
-piani sono **163.878**, e in **758** soltanto quello di sotto non è la quota
-minima della mappa. Il ballatoio sopra la sala esiste ed è lo 0,16% del mondo;
-tutto il resto della sovrapposizione è questo fondale.
-
-Prima di arrivarci sono cadute due ipotesi plausibili, e vale la pena tenerle:
-`LEVELS = 4` non c'entrava (quattro piani coprono il 100,00% delle celle), e il
-criterio "sopra il fondale c'è dell'altro" va dal 30% all'83% senza uno stacco,
-cioè è rumore con una preferenza.
-
-### L'acqua, e il tag che la dichiara
-
-Le celle in cui il fondale è l'**unico** piano non sono terra: sono il mare, il
-fossato, la gola fra due altipiani. Sono **40.964**, e a quel punto la seconda
-voce del TODO si risolve da sé, perché ora c'è con cosa mettere alla prova il
-tag di regione:
+The two left out are the **single-floor** dungeons, which declare `0..0` and
+`1..1` although both are `B1`: where there is nothing to page through, the
+field is not maintained.
+
+The order of the files is not the order of the floors — dungeon 5 keeps them
+as `1F`, `2F`, `B1` — and the first descriptor **does not declare its own**
+floor, because it lists every label in order to draw the selector. Its floor
+is obtained by difference: it is the one the others have not taken, and that
+holds in all five multi-floor dungeons. All **21 floors** now have their
+name, and in `play` the map pages with the arrows.
+
+### The text was there and could not be seen: three defects, one inside the other
+
+**The permissive tables were needed in `descriptors()` too.** 11 files were
+failing silently on a native constant: **17 screens** missing, among them the
+enemy album and all seven dungeon maps. There are 136 screens, not 119. The
+fix had already been written in `descriptor_file()` a session earlier.
+
+**The files are UTF-8 in the data and Shift-JIS in the comments.** The
+authors left their notes in their home encoding — 21 files of 618, and the
+bad byte always comes right after a `--`. The fallback "if UTF-8 fails,
+re-read everything as Shift-JIS" threw away the whole file because of one
+note, and among those 21 is `all.lua.eu`, which on its own declares almost
+all the screens: the labels came back garbled, **319 of 358**.
+
+**And then it became visible how many labels the disc places.** There are
+**432**, and **85** were being drawn, because we looked inside `Message` and
+`Select` and nowhere else. A label is recognised by having a text **and** a
+place: the 61 blocks without `X`/`Y` are data lists, names that another part
+of the screen will go and fetch.
+
+Hence the dungeon map, which was mute, now says "Dark Tower" and "3F".
+
+*The defect has the same shape as the two discoveries before it — in session
+6 data that looked empty was only closed, in session 7 a piece that looked on
+was only off — but this time the cause was **entirely ours**: the disc said
+things, and we were reading the file wrongly.*
+
+### The cursor was not ours, and where it sits measures the text
+
+It was the last piece we drew by hand, and the scene carries it in two ways:
+**parked at the origin** in 7 blocks of 8 (a 16 px `Cursor_01`, to be put
+where `CursorX` says), and **one per row, already placed** in the pause menu,
+nine markers at the positions the descriptor declares item by item — 530
+against 529, 86 against 84. In the second case the other eight have to be
+switched off, which is the same shape as the dungeon map.
+
+And the cursor gives the oracle for **two numbers of ours that had been tuned
+by eye**. The font cell is 32×32, and the descriptor puts the cursor 7 px
+below the label: 16 high inside a row of 32, it lands in the middle. So `Y`
+is the **top** edge of the row and the font scale is **1**, not 1.4. The
+cursor lands in the middle of the row to within 6 px on 30 items, and it
+matches session 7's sum for the dialogue box (`485 + 3×32 + 2×8 = 597`
+against a body that ends at 598): the same row height by two roads that do not
+know each other.
+
+### A screen's follow-up is declared in two cases of 136
+
+Looking for it before declaring it absent: `Pause` opens `PauseTitleSelect`,
+and `GameOver` opens `GameOverSaveSelect` and `GameOverResurrectSelect` — a
+field at the end of the table whose key is the same as its value. All three
+are the **confirmation window** for a choice that cannot be taken back. Where
+the follow-up is a question, the disc says so; where it is another screen, it
+does not.
+
+## Session 8
+
+The first item of the previous TODO, closed — and with it three censuses the
+project had kept apart, because it turned out that **a single field** holds
+them together. Then, for the first time, a validation against an external
+source.
+
+### The field at +0x10 is the actor — [`walk.md`](walk.md), `mapdat.actor()`
+
+The cell record has six numeric fields, and five had been marked `?` for five
+sessions. The fifth is **who lives there**, in a numbering global to the game,
+and three files that do not know each other share it out: map objects below
+5000 (constant per class, **175 of 195**), the enemies the `EnemyView` album
+declares (**45 of 46** are found placed), and the NPCs at **5047 + NN**, where
+`NN` is the index of `c_npc_NN` (**226 cells of 240**, 94.2%).
+
+The last is the best of the three, because it is one oracle *more* on a
+conclusion already drawn. Session 4 had inferred that `n05` is `c_npc_05` from
+the names of the 237 `npcevent_` scripts; here twenty consecutive values say
+it again on their own. The exceptions fall **all** on `c_npc_19`…`c_npc_26`,
+which are exactly the models that inference resolved worst: the disagreement
+points at the weak spot in our directory, not in the disc.
+
+The 8,781 values below 4000 remain unattributed.
+
+A second field fell along the way: +0x08 and +0x0C are the **same number in
+two encodings**, `257·n` and `2ⁿ`, with not one pair off the pattern.
+
+### The enemies are on the disc, and the six letters are two triples
+
+"All that is left to the code is how many it puts in each room and by what
+rule" was written here, and it was wrong: the grid places **10,196 enemies**,
+one per cell. And every cell carries a **set**, `-sA`…`-sH`, a string no
+document of the project had ever seen.
+
+**A, B and C are three alternative arrangements of the same population**, and
+three measures that fail in different ways say so: the same species in **58
+maps of 59**; equal numbers across the whole disc (1,807/1,824/1,804); and
+cells that **never** overlap while covering the same area (88%, above 80% in
+51 maps of 59, below 40% in none — so they are not squads). In the Grass
+Temple the identity holds species by species: 13 Soldier Bones, 10 Scorpion,
+15 Bat, 22 Red Slime, three times over.
+
+**F, G and H are the same three for FROM Mode** — and the letter says so: `F`
+stands for FROM. There the parallel breaks, as it should: in `FIELD_16`,
+36/47/45 against 19/19/19, seven species against four.
+
+### And the enemies are in the game — `view.py play --spawn`
+
+`Walk.populate_enemies()` puts them on the map, and the drawing code needed
+not one line: an entity with model `c_enm_01` looks for the node
+`c_enm_01_01`, which is exactly what the album declares in `NodeStrings`. The
+only translation is to strip the pose from that name, because the album names
+a **frame** and the world needs the root — which is itself a confirmation,
+from a third file, of session 4's "the children of a node are whole poses".
+
+The check is one of recognisability, and it passed three times:
+
+- in the grass temple, at cell (39,18), **two Scorpion and a Soldier Bones**
+  appear — two red scorpions and a skeleton with a sword, which is exactly
+  what the surrounding cells declare;
+- **switching `--spawn` from A to C**, at the same spot, there are again two
+  Scorpion and a Soldier Bones (plus two Red Slime), **in entirely different
+  places**. The hypothesis of three placements can be looked at instead of
+  read;
+- in `field_16` with `--spawn F` the green overworld fills with Spidel and
+  Goble.
+
+And a measure the render suggested, worth more than the render, because it
+puts the walkthrough's most specific sentence to the test — *"even enemies
+that are normally restricted to dungeons"*:
 
 ```
-88,4% delle celle d'acqua porta il tag 119
-85,1% delle celle col tag 119 è acqua      (il tag è largo una cella in più)
+A,B,C in the overworld:  2,195 enemies,    12 of dungeon species =  0.5%
+F,G,H in the overworld:  3,902 enemies, 1,356 of dungeon species = 34.8%
 ```
 
-Mappa per mappa, dove il `119` compare ne porta il 98–100%. Ed è un valore
-**unico su tutto il disco**: l'ipotesi della sessione 5, che cambiasse per
-gruppo di mappe, nasceva dal confondere l'**acqua** con il **vuoto** — le celle
-senza nessuna collisione, 55.477, che sono lo scarto fra la regione
-rettangolare dichiarata e la mappa vera, e che il tag infatti non dichiara (fra
-loro il `119` è il 10%).
+Seventy times as many, and 17 species against 3. That is not a statistical
+preference: it is the difficulty, declared in the data.
 
-Quindi l'acqua si sa senza aprire il file di collisione, che è ciò che serviva
-al renderer per sapere dove disegnarla.
+### The twelve enemies written in Lua — `entity.enemy_motion()`
 
-### Una mappa si entra da tutte le sue porte
+The game implements its enemies in C++, but the disc carries twelve of them in
+full. The actors of the Block Defence minigame reuse the real models **by
+number**: `MGBee` loads `EN_ENEMY_06_04_a`, which is the `NodeStrings` of
+`Killer Bee`. The link is checked on the **names**, which neither file takes
+from the other — `MGSkelton`→*Soldier Bones*, `MGWood`→*Evil Tree*,
+`MGHagureSlime`→*Crystal Slime*: **twelve of twelve**.
 
-`field_14` ha sei celle `Exit`: la prima dà su un ripiano di 16 celle sotto una
-rupe, le altre cinque sulle 3.213 che sono la mappa. La misura ne provava una e
-scriveva 0%. Non è una taratura, è che prendere una porta sola misura la porta
-invece della mappa.
+Three numbers that would have had to be invented can now be read: the
+**period** of a frame (`StepWait`, 0.3 in all twelve — ours was 0.25 and came
+from no data), **the poses of the cycle**, and **who flies**.
 
-E il quadro completo, che vale la pena tenere separato perché quattro cause
-diverse si erano confuse in un numero solo:
+The poses exposed a defect of ours. `Entity.pose()` always returned
+`02_a`/`02_b`, but **12 `c_enm` models of 37** have no `02_a` at all — four
+walk with `04` and eight have no pair. A third of the enemies stood still
+because we were asking for a pose that does not exist. Now the minigame
+declares the cycle where it has one, and the model itself does otherwise.
 
-| | celle | abitanti | passaggi | in piedi |
+And a rule that holds for **all 22** actors, with zero exceptions: *if the
+model has two paired poses `_a`/`_b` the engine runs the cycle, otherwise the
+actor alternates them by hand.* It is the counter-check, from a file written
+for a minigame, of the "`_a` and `_b` are the two steps" inferred in session 4
+from the geometry alone.
+
+**A hypothesis that fell, and it counts because only now could it be
+measured.** Having `Type` (ground/air) might have explained the 4% of placed
+enemies with no floor under them. It does not: fliers 2.3%, ground 4.0% — if
+anything the direction is the opposite. The one that misses the floor most
+often is Clay Golem (17%), which walks, while Killer Bee is over the ground in
+100% of cases. It stays open.
+
+**Patrolling**, on the other hand, cannot be read: in the minigame the enemies
+walk towards the tower with a native `BlockDefenceMove()`, which is that
+minigame's rule. Left unimplemented rather than invented.
+
+### There is no patrolling, and looking for it gave the places their names
+
+`MapParameter.lua.eu` was the last place to look before inventing how enemies
+move, and it contains nothing about movement. Nor does the API, which has
+`PlayEnemy`, `PauseEnemy`, `visibleEnemy`: freeze and show, never move.
+**Patrolling is not declared in the clear anywhere**, and it stays
+unimplemented rather than invented.
+
+But that file declares **211 maps with the place name and the music track**,
+and it matches **168 of our 170** (the two left are `field_99` and
+`field_test`). 55 locations for 168 maps, so a place spans several screens:
+crossing `field_6` and `field_7` is staying in "Klovis". `play` now says where
+you are. And `field_3` is called **"Nialliv Valley"**, which is *Villain*
+backwards.
+
+A confirmation at no cost: `d_1_1_1` is **"Grass Temple"** and `d_6_1_3`
+**"Wind Temple"**, so `DUNGEON_EARO` = wind is now said by a **fourth** file,
+in English.
+
+### `LivingId` is the family, not the home — a reading of ours, corrected
+
+With the temple's name and the real placement together, a sentence the
+documents had taken for granted could be put to the test. 1,988 enemies are
+placed in the temples, and their `LivingId` names the temple they are in
+**47.1%** of the time. With seven habitats chance would give 14%, so the
+correlation is strong; but it is not a rule, and the Flame Temple is full of
+`DUNGEON_WATER`. The habitat classifies the enemy, it does not place it — it
+was the best proxy while the placement could not be read.
+
+And a reading that comes out of it: **the Dark Tower has no habitat of its
+own, it passes through all of them**. Floor by floor the prevailing habitat
+goes GRASS, GRASS, SANDS, WATER, WATER, EARO, that is 1, 1, 3, 4, 4, 6 in the
+order in which the game has you visit the temples. A non-decreasing sequence:
+the final tower retraces the journey.
+
+### External validation, which is what is new in method
+
+A [walkthrough](walkthrough/) — written for playing, not for reading bytes,
+and so with errors entirely its own — confirmed four things we had inferred
+from the bytes alone, and none of them had been looked for:
+
+- *"If the enemy positions are annoying, you can leave the room and come back
+  and see if they respawn in a more favorable location"* → the sets
+  `A`/`B`/`C`;
+- *"all kinds of crazy enemies spawn all over the place — even enemies that
+  are normally restricted to dungeons"* → the profile of `F`/`G`/`H`;
+- *"Crystal Slimes and Blue Dragons spawn rarely… they can actually spawn
+  anywhere"* → **5075** and **5076** are the **only two of the 46** with
+  `LivingId = -1`, that is with no habitat. The field that sets them apart in
+  the data is the one that sets them apart in the game;
+- the eight bosses with their temples, **eight of eight** against the album's
+  habitats — and with them goes the last doubt about `EARO`, which is *aero*.
+
+And a reading the data already gave without knowing it: bosses can be told
+apart because they have **2 cells on 1 map and no `-s`**. A boss has no
+alternative placements because it lives in a single room.
+
+### The 25 event names were functions, not files — `Grid.triggers`
+
+"Only 3 names of 25 find their file", the TODO said. It was the search that
+was wrong: `gimmick_grass4` is a **function** inside `gimmick_grass.lua.eu`,
+together with the other six `gimmick_grass`. Searched for that way, **25 of
+25** resolve.
+
+They are position triggers, and the body confirms it: the guard
+`if GetEventFlag(167)==1 then return end`, `LockPlayer`, the fairy explaining
+the switch, `UnlockPlayer`. They run on the Phase 4 host without adding a
+method. Five of the 25 are in the same file and are the four directions plus
+the centre: `mainevent_herodream` `n`, `s`, `e`, `w`, `2`.
+
+### What the objects do: parameterised in the clear, implemented in C++
+
+`GameParamData/gimmickParam.lua.eu` declares fifteen gimmicks with their
+parameters and the authors' comments — `Hole` with `gravity 18.0` and
+`pop_count 1`, `BlackHole` with `vacuum_range 6.4`, `TargetSwitch` with the
+clamp value "for when the arrow sticks in", `stone_monument` with its two
+messages. The walkthrough validates these too, one of them word for word: the
+`stone_monument` tablet is the Parallax one, and our twelve `Stonemark` are in
+the rooms where the guide says to cast it.
+
+The **logic** stays in the code, but we know its shape. The disc carries 34
+actors written in Lua for the Block Defence minigame, with all four callbacks
+of the contract (`Initialize`, `Update`, `CheckMove`, `CheckCollision`), and
+among them is `75MGBombRock` — the wall a bomb opens, written out in full.
+`MR_BLOCK` and `MR_NONE` appear nowhere else on the disc.
+
+## Session 7
+
+The item at the top of the previous TODO, closed — but not as it was written.
+The question was "either the motion is rebuilt by interpolating between the
+parking position and the final position, or it is the first thing to ask the
+EBOOT", and the answer is that these were **two different animations** put
+into one item: one has both ends on the disc, the other has only one.
+
+### `Start` is not a time, it is an index — [`ui.md`](ui.md), `ui.py clips`
+
+The four clips had been read as a start and a duration on a timeline. The
+count says otherwise: on the 36 screens that declare `In`, `Start` is **0 all
+36 times**; `Main` is 1 all 33 times; `Out` is 2 all 36 times. A time that
+never changes is not a time — it is a position in a table of clips, and the
+name decides it. `Size`, by contrast, varies, and it is the duration in
+seconds.
+
+The big screens confirm it, and they also say what it indexes. In `Option` the
+indices run from 0 to 38, densely, and the three panels `Display`, `Sound`,
+`Message` **share** the block 3–9 and keep apart only their own 0–2, 20–22,
+23–25. So the message area, the button bar and the cursor are the same
+objects, reused: the index does not identify a moment, it identifies **the
+thing that moves**.
+
+The ten indices 10–19 looked like a gap and were a reading defect of ours:
+`Volume` is an **array**, not a dictionary, and a walk that descends only into
+dictionaries skips it. They are the ten notches of the volume control, and the
+scene has exactly ten nodes `Volume00…Volume09`.
+
+### Opening can be rebuilt, because the disc has both ends
+
+The piece is exported at scale zero and the mesh under it is whole, so
+everything from 0 to 1 is there; `Size` declares the duration. `unfold` is no
+longer a switch but a **factor**, and `ui.py anim` produces the frames.
+
+The window opens like a television switching on, and the scene says so:
+`Confirm_01` is three pieces, `a` (505×4) and `c` (505×7) with **scale X = 0**
+and the body `b` (505×99) with **scale Y = 0** — first a horizontal line, then
+the body vertically. Which axis opens is declared by which scale is zero. The
+one thing not read is the curve, and here it is linear so as not to add an
+invented number.
+
+### Sliding, by contrast, has only one end, and it is 15 pieces
+
+The sliding screens are not closed by a scale: they are **moved**. Only the
+parking position is on the disc — `Window01` at `x=-600`, `Window03` at
+`x=1300`, `Message` at `x=1285`.
+
+The motion is horizontal, and that is measured: **38 pieces parked off
+screen, 33 off only in X**. The Y is already the final one, and the descriptor
+confirms it by another route — it puts "EQUIPMENT" at y=53 inside `Window01`
+(48–294), "ITEMS" at y=308 inside `Window02` (303–550), the buttons at y=635
+inside the bar (632–666).
+
+But **where they land in X is written nowhere**: not in the scene, which has
+only the parking position, and not in the descriptor, which places the content
+and not the container. Interpolating between parking and final position is not
+possible, because the final position is missing. This, and only this, is the
+part to ask the EBOOT, and it concerns **5 screens and 15 pieces**: `Item`,
+`Orb`, `Option`, `NameEntry`, `GameOver`.
+
+### The dialogue box, and the file that was not it — [`ui.md`](ui.md)
+
+It was the last piece we still drew ourselves, and the TODO put it in
+`data/Balloon`. It is not there. `balloon_eng.ps3.dsb` is three quads of
+**1.6 × 0.6 world units** — 1.6 is the cell — with materials `CHECK`, `TALK`,
+`OPEN`, and the textures are three speech bubbles with the ✕ button and the
+tail pointing down. It is the sign that floats above a head. The same shape of
+error as `Priest.ps3.dsb`: a convincing name, and a measurement that refutes
+it.
+
+The box is in **`UserInterface/Message`**, with the same three-piece structure
+as every window — `Message_a/b/c` (505 × 138) and `MessageBig_a/b/c`
+(686 × 154) — plus `Advance_Cursor`, the "press to continue" arrow. The
+descriptor supplies the rest: `Line=3`, the text origin (`X`/`Y` and
+`LargeX`/`LargeY`), the line spacing, the colours and **ten typing speeds**.
+
+The numbers fit together, and that is the check: the font at scale 1 is 32 px
+a line, so `485 + 3×32 + 2×8 = 597`, and the body ends at **598**. It also
+shows that `Space` is the spacing *between* lines and not after each one —
+adding it after the last line overshoots by seven pixels. `view.py` now picks,
+of the two sizes, the one the text fits in, and puts it where the disc says.
+
+### And the signs became the "you can talk here" cue
+
+Found by mistake, the object turned out to be what the game loop was missing:
+`play` had no way to show the player where to press. Now the `TALK` sign sits
+above the head of whoever is in front of you, and **only if they have
+something to say** — it is an invitation to press, not a decoration.
+
+It costs nothing because it hooks into `EntityGroup`, which reads the matrix at
+draw time: one geometry in the batch, a dummy entity that every frame takes the
+place of whoever is in front of you, and a null matrix to switch it off. The
+camera gives the angle, because a sign is always read face on.
+
+### The body of the small box is transparent, and that is right
+
+In the render the world shows through the dialogue box, and it looked like a
+compositing defect. The alpha says otherwise: the body of the **small** box
+has a mean alpha of 19, so it is empty, while the **large** one is at 214,
+solid black. A dialogue with an inhabitant is two thin strips and the text
+over the world; the opaque panel is the other size. *Before correcting a
+transparency, measure it: here it was the data.*
+
+### The enemies, and the album that declares them all — [`entities.md`](entities.md)
+
+The TODO said to look at the parameters of the `EnemyObserver` cells before
+concluding that the EBOOT is needed. Those cells carry no enemies: 65 cells
+with a `-gNNN` and nothing else, that is **a room number**, and the five
+numeric fields are the same as any `observer`'s.
+
+The census is elsewhere, and in the clear. The **enemy album**
+(`UserInterface/EnemyView`) is a descriptor like the others, and it declares
+**46 enemies** with identifier (5002–5082), model, English name, habitat and
+drops. The models resolve **46 of 46**: 37 are nodes inside
+`Character/c_obj_all.ps3.dsb` — the same shape as the NPCs — and the 9 bosses
+have a file each. `view.py char c_enm_01` draws a purple rabbit with red
+horns: ツノウサギ in the comment, `Killer Rabbit` in the descriptor.
+
+The fifteen habitats are `FIELD_*` and `DUNGEON_*` by element, and the seven
+dungeon ones match one to one the seven temples of `Item.lua.eu`
+(`DUNGEON_EARO` is *aero*, wind). So **which enemy belongs to which dungeon is
+known without the EBOOT**; all that is left to the code is how many it puts in
+each room and by what rule.
+
+*(Corrected in session 8: it is not left to the code. The grid places the
+enemies cell by cell, 10,196 in all, with the species in field +0x10 and the
+set in `-sA`…`-sH`. See above.)*
+
+The first attempt failed, and it is worth saying so: without the **permissive
+tables** the descriptor does not run, because it names native constants
+(`LIVING`, `GameDataFlags`, `item`) that no script defines — and the table
+appears not to be there. `ui.descriptor_file` now loads `host.BOOT`, which
+already had that solution.
+
+### Map objects declare their room — [`walk.md`](walk.md), `Grid.rooms`
+
+The shape of the string splits the cells into two families: `-gN;` alone
+(`SwitchObserver` 80, `EnemyObserver` 65) and `-gN;-oM;` as a pair. And within
+the pairs, where the two numbers are **equal** the cell turns up again on
+another map — `WarpDoor` 29 of 29, `destructionWall` 43 of 46 — so those are
+passages, and that is why `walkabout` already went through them.
+
+**The hypothesis written here was wrong.** "The `PitFall` has a pair like the
+passages, so falling is arriving": tested, its pair turns up again 2 times in
+21, and the `BlackHole`'s 3 in 7. Neither the `-g` alone nor the `-o` alone
+resolves them: each falls on twenty cells at a time, so they collect instead
+of addressing.
+
+**The number is `(floor)(room)`**, and two files that do not know each other
+say so. The first digit is the floor written in the **file name** (2,484 gates
+of 2,490, 99.8%), and the rooms that come out are the ones the
+`dungeonMapNN_MM` descriptors draw as `room_on_NN` — **404 of 413**, with 14
+floors of 21 exact.
+
+A nice reading that fell along the way: the dark tower's seven black holes are
+one per floor, and the first digit of their gates goes 1, 2, 3, 4, 5, 6, 7.
+They looked like the seven temples, and a tower that opens onto the dungeons
+would have been an elegant explanation. None of those pairs exists in the
+dungeon the digit names: **0 of 7**. The digit was the floor the cell is on.
+
+### The dungeon map can be drawn — [`ui.md`](ui.md), `ui.py map`
+
+It was under "what is missing", as a screen with dynamic content waiting for
+save data that does not exist. The data came from the item above: the grid
+declares the room of every cell, and the scene has one piece per room and per
+state. `ui.py map 1 1 out.png --seen 1,2,3 --here 4` draws the floor with the
+rooms seen lit, the current one brighter and the rest black.
+
+And the descriptor confirms the reading of the rooms from a third file, by
+naming the fields that are mute digits in the grid: the doors declare
+`groupId` and `objectId`, which are the `-g` and the `-o`, with `groupId=12`
+for floor 1, room 2.
+
+**The three states are not three drawings: they are a colour.** `room_on_02`,
+`room_off_02` and `room_still_02` have the same mesh, the same position, the
+same UVs and the same texture, and what tells them apart is the material's
+`diffuse` — 1.0 / 0.5 / 0.0. The defect this uncovered is general: the
+compositor looked only at the texture and threw away the material colour on
+**every** screen. Now it multiplies by it — and the defect was a big one,
+because tint is how this interface declares states: **49 scenes of 115** have
+tinted nodes, 1,869 in all, of which **891 at 0.0** (fully off) and 864 at
+0.5. Eight hundred and ninety-one pieces that should be black were being drawn
+at full light.
+
+### The map enters the game, and three roads that lead nowhere
+
+`view.py play <map> --map`, or `M` while walking: the map of the floor you are
+on, over the scene. In the wind temple the floor selector on the left lights
+the third slot of five, which is the right floor — and it does so by itself,
+because it is in the descriptor's scene.
+
+What **cannot** be done is to say which room you are in, and not out of
+laziness:
+
+- "the room is a screen" — the box around the marked cells fits in 16×12 in
+  95.4% of cases, but only 305 rooms of 416 fall in an aligned block;
+- "the region tag is the room" — no: in `d_1_1_1` all 23 rooms carry the same
+  tag `2001`, which is the **dungeon**;
+- "the nearest marker" — the boxes do not overlap (1.3%) but cover 12% of the
+  map, and where the answer is certain the nearest marker gets it right
+  **75.7%** of the time: noise with a preference.
+
+The picture that emerges is coherent, though, and that is a result: the
+observers are the **entry triggers** by which the engine records which room
+you are in — which is why they are sparse, and why two in three sit inside the
+solid rather than on the floor. The region is of use to nobody but us, so it
+is not declared.
+
+### The `EDT` format, the heart of the game's identity — [`format_edt.md`](format_edt.md)
+
+`EDTFILE1.9`, the characters drawn dot by dot. Solved with the same oracle as
+ever: **90 files of 90 end exactly on the last byte**, for 260,860 voxels. All
+big-endian and **unaligned** — a byte stream, where one odd-length string
+shifts everything after it by one.
+
+A voxel is 20 bytes: a packed position, plus RGB, plus a finish (0–6). And the
+three bytes of the position are **all between 0 and 15**, that is a cube of
+**16×16×16** — which is the grid of `water_col.dds`, sixteen dots per cell,
+found in session 5 for quite another reason. Three files that do not know each
+other, the same unit.
+
+**The six parts are six poses.** The counts of `angel.edt` — 261, 256, 246,
+240, 263, 267 — are too close to be six pieces of one body, and the measure
+closes it: **60.4%** of the voxels are in the same position between the first
+part and the other five. It is session 4's "characters have no skeleton, the
+children of a node are whole frames", seen from the other side.
+
+The check is the contact sheet: 90 recognisable characters — knights, mages,
+Santa Claus, a king with a crown, dragons, skeletons, a bear, a pumpkin — and
+the presets come back under their own file names, `angel` with a halo and
+wings, `black_smith` with a white beard and an apron, `boxer` with gloves.
+
+**And the first contact sheet came out from behind**, which was noticed by the
+person looking at it without knowing what to expect. It was not a defect:
+taking the maximum Z gives the backs of the heads, taking the minimum gives
+the faces — so the editor's characters are authored **facing −Z**, the same
+convention `entities.md` had inferred in another session from the game's
+meshes. Two files written for different purposes, the same choice. And it can
+be measured without looking: in `black_smith.edt` the front plane carries 9
+voxels and the back one 40, because a face is hollow and the back of a head is
+solid.
+
+Only one thing did the first pass get wrong, and it corrected itself: it
+stopped 24 bytes short of the end. Twenty-four is exactly six floats — the
+part's tail, which is there after the last part too.
+
+### A hypothesis that fell, worth keeping
+
+The `_PIVOT` nodes seemed to declare the anchor the growth starts from, and
+the test "for every piece at scale zero, the mesh has an edge at exactly 0 on
+the zeroed axis" gives **87.3%** — which seems a lot until you measure the
+control on pieces at full scale, which gives **76%**. It is not an oracle, it
+is noise with a preference. And the exceptions say why: `NEW-node` in
+`EnemyAlbum` measures `[-61.5, +61.5]`, so it is **centred** on the origin and
+grows from the centre. The anchor is not the edge, it is wherever the origin
+falls — which is just how a scale works, not a discovery.
+
+## Session 6
+
+Both items at the top of the previous TODO, closed — and the first opened the
+second, which had not been planned to come this way.
+
+### The 22 passages without a standable arrival: none was a wrong reading
+
+They were 19 arrivals that were not walkable, plus 3 passages whose
+destination does not exist on the disc. The right question turned out to be
+the first one asked: **is there a collision triangle above that cell?** Yes,
+in all 19, and in several cases one that faces up, too. So the collision was
+there, and what missed it was our reading, in **three** different ways — all
+three of them numbers assumed instead of measured:
+
+- **the column was anchored at zero.** 69 collision files of 171 go below it,
+  and the floor of `d_1_2` is at `−0.000002`: a barely negative zero, the
+  residue of a `float32` passed through a barycentric sum. The 114 points that
+  fell in the entry cell of the game's first passage were thrown away, all 114
+  of them.
+- **the column was 25.6 units tall.** `FIELD_07` is a mountain and reaches
+  51.2: the summit was cut off.
+- **the seeding had a cap of 96 subdivisions**, which looked like the prudent
+  choice. In `FIELD_07` 2,238 triangles of 6,747 exceed 38.4 units — the
+  longest side measures 190 — and for them the step became 2.0, wider than a
+  cell: it left whole cells uncovered. Without the cap it costs 27% more points
+  across the whole disc and leaves no holes.
+
+Now the mesh declares base and height, and the passages reached with a
+standable arrival are **365 of 369**: the four that remain have a destination
+map absent from the disc.
+
+### The backdrop, and why putting the right levels back made everything worse
+
+With the levels below zero put back, the measure dropped from 63% to 41%.
+Under every overworld map there is a single flat quadrilateral spread from
+side to side — in `FIELD_22` it is **two triangles** for 10,368 cells of
+16,384 — at −3.2. It faces up, so it is a floor in every respect; only it has
+metres of rock on top of it, and being the lowest it is the one the map
+starts from. `field_30` dropped to 84 cells walked of 10,219.
+
+What separates it from a real floor is a count, not a threshold: there are
+**163,878** two-level cells, and in only **758** of them is the lower one not
+the map's minimum height. The gallery above the hall exists and is 0.16% of
+the world; all the rest of the overlap is this backdrop.
+
+Two plausible hypotheses fell before getting there, and they are worth
+keeping: `LEVELS = 4` had nothing to do with it (four levels cover 100.00% of
+the cells), and the criterion "there is something else above the backdrop"
+runs from 30% to 83% with no break, which is noise with a preference.
+
+### Water, and the tag that declares it
+
+The cells where the backdrop is the **only** level are not land: they are the
+sea, the moat, the gorge between two plateaus. There are **40,964** of them,
+and at that point the TODO's second item solves itself, because there is now
+something to test the region tag against:
+
+```
+88.4% of water cells carry tag 119
+85.1% of cells with tag 119 are water      (the tag is one cell wider)
+```
+
+Map by map, wherever `119` appears, 98–100% of the water carries it. And it is
+a value **unique across the whole disc**. Session 5's hypothesis, that it
+changed by group of maps, came from confusing **water** with **void** — the
+cells with no collision at all, 55,477 of them, which are the gap between the
+declared rectangular region and the real map, and which the tag indeed does
+not declare (among them `119` is 10%).
+
+So water is known without opening the collision file, which is what the
+renderer needed in order to know where to draw it.
+
+### A map is entered by all its doors
+
+`field_14` has six `Exit` cells: the first opens onto a shelf of 16 cells
+under a cliff, the other five onto the 3,213 that are the map. The measure
+tried one and wrote 0%. That is not calibration: taking a single door measures
+the door instead of the map.
+
+And the complete picture, worth keeping apart because four different causes
+had been merged into a single number:
+
+| | cells | inhabitants | passages | standable |
 |---|---:|---:|---:|---:|
-| geometria di rendering, gradino 0,6 | 18% | 65% | 194 | |
-| collisione `.DPK`, gradino 0,6 | 25% | 78% | 202 | |
-| collisione `.DPK`, gradino una casella | 63% | 96% | 303 | 281 |
-| colonna misurata, fondale sepolto, tutte le porte | **67%** | **97%** | **369** | **365** |
+| rendering geometry, step 0.6 | 18% | 65% | 194 | |
+| `.DPK` collision, step 0.6 | 25% | 78% | 202 | |
+| `.DPK` collision, one-cell step | 63% | 96% | 303 | 281 |
+| measured column, buried backdrop, all doors | **67%** | **97%** | **369** | **365** |
 
-### Si scende di una casella, e non è una scelta
+### Stepping down is one cell, and it is not a choice
 
-La regola era simmetrica — un gradino in su, un gradino in giù — per non
-camminare giù dai tetti, e la simmetria non era stata messa alla prova. Lo
-stesso oracolo del gradino dice che va bene: lasciando scendere di più, gli
-abitanti raggiunti restano **257 a qualunque discesa**, da una casella a nessun
-limite. Scendere di più compra solo celle (+3,6%), cioè tetti e cornicioni.
+The rule was symmetric — one step up, one step down — so as not to walk off
+roofs, and the symmetry had never been tested. The same oracle as for the step
+says it is right: letting the walk descend further, the inhabitants reached
+stay at **257 for any descent**, from one cell to no limit at all. Descending
+further buys only cells (+3.6%), that is roofs and cornices.
 
-Quindi le mappe che restano poco percorribili — `d_60_2`, `d_80_1`, `field_90`
-— hanno isole vere, non una soglia sbagliata. Tre di loro, fra l'altro, **non
-hanno nessun passaggio che punti a loro**: ci si entra per script
-(`Event:SetMap("Field_90","-gtf3_1")`), e la porta che lo script nomina è
-proprio quella da cui già si parte.
+So the maps that stay poorly walkable — `d_60_2`, `d_80_1`, `field_90` — have
+real islands, not a wrong threshold. Three of them, incidentally, **have no
+passage pointing at them**: they are entered by script
+(`Event:SetMap("Field_90","-gtf3_1")`), and the door the script names is the
+very one the walk already starts from.
 
-### Gli oggetti di mappa sono attori — [`walk.md`](walk.md), `Grid.objects`
+### Map objects are actors — [`walk.md`](walk.md), `Grid.objects`
 
-La griglia dichiara **1.518 celle in 112 classi** oltre a passaggi e abitanti:
-`observer` 163, `Observer` 149, `SwitchObserver` 80, `EnemyObserver` 65,
-`destructionWall` 46, `up` 30, `WarpDoor` 29, `PitFall` 21, `BlackHole` 7,
-`Barricade` 7.
+The grid declares **1,518 cells in 112 classes** besides passages and
+inhabitants: `observer` 163, `Observer` 149, `SwitchObserver` 80,
+`EnemyObserver` 65, `destructionWall` 46, `up` 30, `WarpDoor` 29, `PitFall`
+21, `BlackHole` 7, `Barricade` 7.
 
-La domanda utile era dove vivessero, e la risposta è **da nessuna parte**: il
-muro rompibile è 0% disegnato e 0% solido, e così il buco nero e la porta. La
-loro cella è pavimento liscio. Li istanzia il motore come attori — la
-tassonomia è l'enum `ActorType` già estratto dal Lua, con
-`AT_DESTRUCTION_WALL`, `AT_DOOR`, `AT_GIMM_GROUND_SWITCH` fra i 33 membri.
+The useful question was where they live, and the answer is **nowhere**: the
+breakable wall is 0% drawn and 0% solid, and so are the black hole and the
+door. Their cell is smooth floor. The engine instantiates them as actors — the
+taxonomy is the `ActorType` enum already extracted from the Lua, with
+`AT_DESTRUCTION_WALL`, `AT_DOOR`, `AT_GIMM_GROUND_SWITCH` among its 33
+members.
 
-Da cui due cose che vanno tenute insieme: il giro di gioco **attraversa** i 45
-muri rompibili (quindi il `walkabout` è un limite superiore, per quanto stretto
-— e provare ad aprirli dà zero celle in più, perché erano già aperti), e gli
-osservatori **non sono grilletti da pavimento**: due su tre stanno dentro il
-solido, e solo il 31–41% delle loro celle è calpestabile.
+Two consequences follow, and they belong together. The game loop **walks
+through** the 45 breakable walls, so `walkabout` is an upper bound, however
+tight — and trying to open them gives zero extra cells, because they were
+already open. And the observers **are not floor triggers**: two in three are
+inside the solid, and only 31–41% of their cells are walkable.
 
-Un filone piccolo di passaggio: 64 celle nominano uno script (`mainevent_*`,
-`gimmick_*`), ma solo 3 nomi trovano il file — `mainevent_deserttemple1` sta in
-`mainevent_201_deserttemple1.lua.eu`, cioè il numero non c'è nel nome della
-cella. Gli altri 22 nomi non hanno uno script che si chiami così.
+A small side thread: 64 cells name a script (`mainevent_*`, `gimmick_*`), but
+only 3 names find their file — `mainevent_deserttemple1` is in
+`mainevent_201_deserttemple1.lua.eu`, that is the number is not in the cell's
+name. The other 22 names have no script called that.
 
-*(Corretto in sessione 8: si risolvono tutti e 25. Non sono file ma **funzioni**
-dentro un file per elemento.)*
+*(Corrected in session 8: all 25 resolve. They are not files but **functions**
+inside one file per element.)*
 
-## Fatto in sessione 5
+## Session 5
 
-Le due voci in cima al TODO precedente, chiuse tutte e due. E poi due cose che
-non erano in programma, che le ha chieste il camminare stesso: il formato della
-collisione, e la scoperta che l'unico numero inventato del sistema era
-sbagliato.
+Both items at the top of the previous TODO, closed. And then two things that
+were not planned, which walking itself asked for: the collision format, and
+the discovery that the only invented number in the system was wrong.
 
-### Camminare nel mondo — [`walk.md`](walk.md), `tools/walk.py`
+### Walking in the world — [`walk.md`](walk.md), `tools/walk.py`
 
-`view.py play <mappa>` — frecce per camminare, spazio per parlare, `K` per il
-soffitto. Una cella per volta, e girarsi non è camminare.
+`view.py play <map>` — arrows to walk, space to talk, `K` for the ceiling.
+One cell at a time, and turning is not walking.
 
-- **Il muro.** Ogni cella tiene una colonna di 64 fette da un quarto di
-  casella con la quota più alta trovata in ognuna, e fino a quattro **piani**
-  distinti — il ballatoio sopra la sala è un posto, non un dislivello. Si passa
-  se la colonna è libera fra +0,3 e +1,3 sopra i piedi; il piede si posa sulla
-  superficie più alta entro un gradino, che è anche come si sale una scala
-  senza sapere che è una scala.
-- **Si sta in piedi solo su ciò che guarda in su.** È l'errore che questa parte
-  è costata: un blocco pieno ha vertici *solo sulle sue facce*, quindi un
-  pavimento alto 1,6 ne offre due, e la faccia di sotto sembra un pavimento con
-  un metro e mezzo d'aria libera sopra. Si camminava dentro la roccia e la
-  mappa si spezzava in isole. A separarle è la **normale** del vertice.
-- **I passaggi, usati invece che contati.** Il varco ha due forme e servono
-  tutte e due: a nome (`-gfrom_d_1`, aggancio su una cella `Exit`) e a numero
-  (`-g11;-o101;`, aggancio sull'*identità* della cella d'arrivo, che è come
-  sono fatte le scale). Con la sola prima forma si risolve il 46% invece del
-  98%.
-- **Il punto d'ingresso è una cella `Exit`**, non una cella qualsiasi con un
-  `-g`: quelle sono centinaia — osservatori, gimmick — e partire dalla prima
-  faceva cominciare la partita **in cima a un muro**.
-- **Il soffitto si toglie sopra la testa del giocatore**, perché i sotterranei
-  di questo gioco hanno il tetto e dall'alto sono una lastra.
+- **The wall.** Each cell keeps a column of 64 slices a quarter of a cell
+  thick, with the highest height found in each, and up to four distinct
+  **levels** — the gallery above the hall is a place, not a step. You pass if
+  the column is free between +0.3 and +1.3 above your feet; the foot lands on
+  the highest surface within a step, which is also how you climb a staircase
+  without knowing it is a staircase.
+- **You stand only on what faces up.** This is the mistake this part cost: a
+  solid block has vertices *only on its faces*, so a floor 1.6 high offers
+  two, and the underside looks like a floor with a metre and a half of free
+  air above it. You walked inside the rock and the map broke into islands.
+  What separates the two is the vertex **normal**.
+- **Passages, used rather than counted.** A gate has two forms and both are
+  needed: by name (`-gfrom_d_1`, matched on an `Exit` cell) and by number
+  (`-g11;-o101;`, matched on the *identity* of the arrival cell, which is how
+  staircases are built). With the first form alone 46% resolve instead of 98%.
+- **The entry point is an `Exit` cell**, not any cell with a `-g`: those are
+  in the hundreds — observers, gimmicks — and starting from the first one made
+  the game begin **on top of a wall**.
+- **The ceiling is removed above the player's head**, because this game's
+  dungeons have a roof and from above they are a slab.
 
-E la misura, che è la cosa che resta:
+And the measure, which is what stays:
 
 ```
 python tools/view.py walkabout
 
-167 mappe percorse in 62s, ingresso calpestabile in 167 su 167
-celle raggiunte a piedi   221.227/352.278 = 63%
-abitanti raggiunti            254/264     = 96%   (sotterranei 94%, campagna 99%)
-passaggi raggiunti            303/512,  con l'arrivo in piedi 281
+167 maps walked in 62s, standable entry in 167 of 167
+cells reached on foot     221,227/352,278 = 63%
+inhabitants reached           254/264     = 96%   (dungeons 94%, overworld 99%)
+passages reached              303/512,  with a standable arrival 281
 ```
 
-Il 63% delle celle non è un fallimento del 37%: il denominatore conta anche i
-tetti e le cime dei muri, che infatti non si devono raggiungere. Il numero che
-conta è quello degli abitanti.
+63% of cells is not a 37% failure: the denominator also counts roofs and the
+tops of walls, which are not meant to be reached. The number that counts is
+the inhabitants'.
 
-### Le zone nere di un fotogramma sono acqua, e il disco lo dichiara
+### The black areas of a frame are water, and the disc declares it
 
-Guardando il fermo immagine dell'overworld: le grandi zone nere non erano un
-difetto del render né geometria mancante — sono **acqua e vuoto**. Le celle
-sotto quelle zone non hanno né geometria né collisione, e la `MAP_ALIGNMENT`
-le distingue dandogli un identificativo di regione tutto loro (496 celle con
-tag `119` in `Field_16`, e nessun'altra cella di quella mappa lo porta).
+Looking at the overworld still: the large black areas were neither a render
+defect nor missing geometry — they are **water and void**. The cells under
+those areas have neither geometry nor collision, and `MAP_ALIGNMENT` sets them
+apart by giving them a region identifier all their own (496 cells with tag
+`119` in `Field_16`, and no other cell of that map carries it).
 
-Da qui cade una voce aperta da due sessioni: **il 9% scoperto di `layout` era
-il denominatore**. Contando solo le celle che il gioco considera solide, la
-composizione delle mappe copre il **99,6%** invece del 90,7%; le altre 104.864
-celle, il 22%, sono mare e fossati. `view.py layout` ora stampa tutti e due i
-numeri.
+That closes an item open for two sessions: **the 9% that `layout` left
+uncovered was the denominator**. Counting only the cells the game considers
+solid, the map composition covers **99.6%** instead of 90.7%; the other
+104,864 cells, 22%, are sea and moats. `view.py layout` now prints both
+numbers.
 
-*(Corretto in sessione 6: 99,3% e 96.062 celle, perché il denominatore delle
-celle solide era a sua volta troncato sotto lo zero. E «mare e fossati» erano
-due cose diverse messe insieme — vedi sopra.)*
+*(Corrected in session 6: 99.3% and 96,062 cells, because the denominator of
+solid cells was itself truncated below zero. And "sea and moats" were two
+different things put together — see above.)*
 
-L'acqua però resta da **disegnare**: il `.pac` non la contiene, e nessuna delle
-sue 11 texture è acqua. La disegna il motore, e quello è lavoro di renderer.
+Water still has to be **drawn**, though: the `.pac` does not contain it, and
+none of its 11 textures is water. The engine draws it, and that is renderer
+work.
 
-### `MAPCOLLISION/*.DPK`, il muro vero — [`format_dpk.md`](format_dpk.md)
+### `MAPCOLLISION/*.DPK`, the real wall — [`format_dpk.md`](format_dpk.md)
 
-Non era in programma per questa sessione: l'ha chiesto il camminare, quando la
-misura ha detto che approssimare la collisione con i vertici del disegno non
-bastava. Risolto al primo tentativo, con lo stesso oracolo di `MAP_ALIGNMENT`:
-una tabella di mesh, ognuna vertici e triangoli, e percorrendola si finisce
-**esattamente** sull'ultimo byte in **171 file su 171** (301 mesh, 420.301
-triangoli). Stesso sistema di riferimento del `.pac`, niente da convertire.
+It was not planned for this session: walking asked for it, when the measure
+said that approximating collision with the drawn vertices was not enough.
+Solved at the first attempt, with the same oracle as `MAP_ALIGNMENT`: a table
+of meshes, each one vertices and triangles, and walking it ends **exactly** on
+the last byte in **171 files of 171** (301 meshes, 420,301 triangles). The
+same frame of reference as the `.pac`, nothing to convert.
 
-L'unico campo che non si indovina è il conto dei **float** invece dei vertici.
-E c'è un refuso sul disco stampato: `DANGEON_8_2.DPK`.
+The one field you would not guess is the count, which is of **floats** rather
+than vertices. And there is a typo on the pressed disc: `DANGEON_8_2.DPK`.
 
-### Il gradino vale una casella, e non era una taratura
+### A step is one cell, and it was not calibration
 
-L'unico numero inventato di tutto il sistema — «un ginocchio», 0,6 — sbagliato
-di quasi tre volte. Due oracoli indipendenti dicono **1,6**:
+The only invented number in the whole system — "a knee", 0.6 — was wrong by
+nearly a factor of three. Two independent oracles say **1.6**:
 
-- i dislivelli fra celle vicine calpestabili sono multipli esatti di 1,6
-  (85,3% a zero, 8,6% a 1,60, 3,3% a 3,20, quasi niente in mezzo);
-- gli **abitanti raggiunti** si saturano lì: 206/264 a 0,6, **255** a 1,7, 256 a
-  2,5 e a 4,9. Una casella ne compra 49, tutto il resto uno.
+- the height differences between neighbouring walkable cells are exact
+  multiples of 1.6 (85.3% at zero, 8.6% at 1.60, 3.3% at 3.20, almost nothing
+  in between);
+- the **inhabitants reached** saturate there: 206/264 at 0.6, **255** at 1.7,
+  256 at 2.5 and at 4.9. One cell buys 49, everything beyond it one.
 
-Il guadagno complessivo, che vale la pena tenere separato perché due cause
-diverse si erano confuse:
+The overall gain, worth keeping apart because two different causes had been
+merged:
 
-| | celle | abitanti | passaggi |
+| | cells | inhabitants | passages |
 |---|---:|---:|---:|
-| geometria di rendering, gradino 0,6 | 18% | 65% | 194 |
-| collisione `.DPK`, gradino 0,6 | 25% | 78% | 202 |
-| collisione `.DPK`, gradino una casella | **63%** | **96%** | **303** |
+| rendering geometry, step 0.6 | 18% | 65% | 194 |
+| `.DPK` collision, step 0.6 | 25% | 78% | 202 |
+| `.DPK` collision, one-cell step | **63%** | **96%** | **303** |
 
-E il divario campagna/sotterranei **è sparito**: 63% e 63% di celle, con la
-campagna al 99% di abitanti contro il 94% dei sotterranei. Quello che poche ore
-prima era scritto come «due cause, la prima è geometria mancante» aveva una
-causa sola, ed era la soglia inventata.
+And the overworld/dungeon gap **has gone**: 63% and 63% of cells, with the
+overworld at 99% of inhabitants against the dungeons' 94%. What a few hours
+earlier had been written as "two causes, the first being missing geometry" had
+a single cause, and it was the invented threshold.
 
-### I 199 posti di NPC senza un nome — [`walk.md`](walk.md), `entity.npc_directory()`
+### The 199 NPC places without a name — [`walk.md`](walk.md), `entity.npc_directory()`
 
-La mappa dichiara 236 identificativi e gli script di evento ne nominavano 37.
-Gli altri li nomina il **loro** script: i 243 `npcevent_n<NN><archetipo><id>`
-portano nel nome del file il modello e l'archetipo, e nel corpo il dialogo.
+The map declares 236 identifiers, and the event scripts named 37 of them. The
+others are named by **their own** script: the 243
+`npcevent_n<NN><archetype><id>` carry the model and the archetype in the file
+name, and the dialogue in the body.
 
-- **225 identificativi su 236 (95%)** hanno ora nome, faccia e battuta, e il
-  nome è quello che gli script userebbero — quindi un evento che più tardi
-  nomini quell'NPC trova *questo*, già al suo posto.
-- Le **maiuscole** non le dice il nome del file (`Blacksmith` o `BlackSmith`?):
-  le dicono i 151 script che si nominano per esteso al proprio interno.
-- Sei archetipi in più con il modello dichiarato: `WiseMan1` → `c_npc_01`,
-  `WiseMan2`…`WiseMan6` → `c_npc_20`…`c_npc_24`. Erano finiti fra le "comparse
-  senza `npcevent`" perché il censimento guardava i nomi usati dagli **script di
-  evento**, e i sei saggi parlano quasi solo attraverso il proprio.
+- **225 identifiers of 236 (95%)** now have a name, a face and a line, and the
+  name is the one the scripts would use — so an event that later names that
+  NPC finds *this one*, already in place.
+- The **capitalisation** is not given by the file name (`Blacksmith` or
+  `BlackSmith`?): it is given by the 151 scripts that spell out their own name
+  inside.
+- Six more archetypes with a declared model: `WiseMan1` → `c_npc_01`,
+  `WiseMan2`…`WiseMan6` → `c_npc_20`…`c_npc_24`. They had ended up among the
+  "extras with no `npcevent`" because the census looked at the names used by
+  the **event scripts**, and the six wise men speak almost only through their
+  own.
 
-## Fatto in sessione 4
+## Session 4
 
-Tre voci, tutte e tre in cima al TODO precedente, e **nessuna ha richiesto
-l'EBOOT** come vi era scritto.
+Three items, all three at the top of the previous TODO, and **none of them
+needed the EBOOT**, as had been written there.
 
-### Gli NPC di mappa e la tabella dei modelli — [`entities.md`](entities.md)
-Le due voci in cima al TODO precedente, chiuse tutte e due, e **nessuna delle
-due ha richiesto l'EBOOT** come era scritto.
+### Map NPCs and the model table — [`entities.md`](entities.md)
 
-- Le **posizioni**: fra le celle della griglia logica ce ne sono 271 la cui
-  classe è il solo identificativo di un NPC (`a1_010`, `b8_010`), senza
-  parametri. Il nome che usa lo script è archetipo più identificativo, quindi
-  la coda del nome è la chiave — la stessa forma di aggancio del nome del gate
-  per i passaggi. **72 nomi su 99 collocati**, erano 40.
-- I **modelli**: i 237 script sotto `Event/npcevent_*` si chiamano
-  `npcevent_n<NN><archetipo><id>`, e quel numero è l'indice di `c_npc_NN`.
-  Biiezione perfetta — zero indici con due archetipi, zero archetipi con due
-  indici — e verificata a occhio su sei modelli inequivocabili: Spelunker in
-  salopette, la corona del re, la gallina, il cane. **66 nomi su 99 con il
-  modello che il disco dichiara**, erano zero.
+The two items at the top of the previous TODO, both closed, and **neither of
+the two needed the EBOOT**, as had been written.
 
-Il primo indizio era arrivato per caso: `c_npc_05` disegnato aveva l'aria di un
-vecchio, e `n05` è `oldman`.
+- The **positions**: among the cells of the logical grid there are 271 whose
+  class is nothing but an NPC's identifier (`a1_010`, `b8_010`), with no
+  parameters. The name the script uses is archetype plus identifier, so the
+  tail of the name is the key — the same shape of match as the gate name for
+  passages. **72 names of 99 placed**, up from 40.
+- The **models**: the 237 scripts under `Event/npcevent_*` are named
+  `npcevent_n<NN><archetype><id>`, and that number is the index of
+  `c_npc_NN`. A perfect bijection — zero indices with two archetypes, zero
+  archetypes with two indices — and checked by eye on six unmistakable models:
+  Spelunker in dungarees, the king's crown, the hen, the dog. **66 names of 99
+  with the model the disc declares**, up from zero.
 
-### La composizione delle mappe — [`format_pac.md`](format_pac.md)
+The first clue came by chance: drawn, `c_npc_05` looked like an old man, and
+`n05` is `oldman`.
 
-`view.py screens()` + `layout`. Il nodo che teneva separati due pezzi
-funzionanti, e insieme una **correzione**: fino a ieri le sezioni di un `.pac`
-si credevano *cullings* già collocati, e si disegnavano tutte sovrapposte.
+### Map composition — [`format_pac.md`](format_pac.md)
 
-Sono **schermi da comporre**. La sezione `(c, r)` va messa al suo posto in una
-griglia il cui passo è dichiarato dalla `MAP_ALIGNMENT` omonima: il rapporto
-fra la griglia logica e quella del container è sempre un intero — 16 × 12 celle
-per schermo nei sotterranei, 16 × 16 nell'overworld.
+`view.py screens()` + `layout`. The knot that kept two working pieces apart,
+and with it a **correction**: until yesterday the sections of a `.pac` were
+believed to be *cullings* already in place, and they were all drawn on top of
+one another.
+
+They are **screens to be composed**. Section `(c, r)` goes in its place in a
+grid whose pitch is declared by the `MAP_ALIGNMENT` of the same name: the
+ratio between the logical grid and the container's grid is always an integer
+— 16 × 12 cells per screen in the dungeons, 16 × 16 in the overworld.
 
 ```
 python tools/view.py layout
 
-167 mappe verificate, celle di mappa coperte 436.043/480.731 = 90,7%
-                      geometria fuori mappa   14.192/625.861 =  2,3%
+167 maps checked, map cells covered    436,043/480,731 = 90.7%
+                  geometry off the map  14,192/625,861 =  2.3%
 
-sulle 82 mappe a più schermi:  composte 90,3%   accatastate 3,9%
+on the 82 multi-screen maps:  composed 90.3%   stacked 3.9%
 ```
 
-L'oracolo è esterno al formato: la `MAP_ALIGNMENT` dice cella per cella dove
-c'è mappa, ed è un altro file, con un altro scopo, nell'unico endianness
-diverso del disco.
+The oracle is external to the format: `MAP_ALIGNMENT` says cell by cell where
+there is map, and it is another file, with another purpose, in the only other
+endianness on the disc.
 
-Da qui cade tutto il resto:
+Everything else follows from this:
 
-- **una cella logica vale 1,6**, cioè l'altezza di un personaggio: griglia
-  logica, griglia degli schermi, modelli e argomenti degli script sono la
-  stessa unità;
-- gli script parlano in un riferimento con l'**origine a un angolo** (X
-  positiva verso destra, Z negativa verso il basso), e `to_local()` lo porta su
-  quello centrato del `.pac`;
-- `SetPlayerPosition(cx, cy, piano)` colloca davvero il giocatore, e con lui
-  gli NPC che nascono relativi a lui;
-- la firma di `SetCamera` a sei argomenti **era sbagliata**: leggeva una
-  distanza dove sta l'elevazione, e la distanza non c'è affatto. A dirlo è
-  stato un segno — il secondo argomento scende a −17,72.
+- **a logical cell is 1.6**, which is a character's height: the logical grid,
+  the screen grid, the models and the script arguments are the same unit;
+- the scripts speak in a frame with its **origin at a corner** (X positive to
+  the right, Z negative downwards), and `to_local()` brings it onto the
+  `.pac`'s centred one;
+- `SetPlayerPosition(cx, cy, floor)` really places the player, and with them
+  the NPCs that spawn relative to the player;
+- the six-argument signature of `SetCamera` **was wrong**: it read a distance
+  where the elevation is, and there is no distance at all. A sign said so —
+  the second argument goes down to −17.72.
 
-Ora `view.py <mappa> --event <script>` è la scena del gioco: la mappa intera,
-i personaggi dove lo script li mette, l'inquadratura che lo script sceglie.
-E ammettere un passo di schermo frazionario — `d_20_9` ha 3 schermi per 38
-celle — porta la verifica da 163 mappe a **167 su 167**, 13.000 celle coperte
-in più senza aumentare la geometria fuori mappa.
+Now `view.py <map> --event <script>` is the game's own scene: the whole map,
+the characters where the script puts them, the framing the script chooses.
+And admitting a fractional screen pitch — `d_20_9` has 3 screens for 38 cells
+— takes the check from 163 maps to **167 of 167**, 13,000 more cells covered
+without increasing the geometry off the map.
 
-### Le entità — [`entities.md`](entities.md), `tools/entity.py`
+### Entities — [`entities.md`](entities.md), `tools/entity.py`
 
-
-**Le entità** — [`entities.md`](entities.md), `tools/entity.py`. La prima voce
-del TODO precedente, chiusa. Il mondo ha dentro dei personaggi: posizione,
-direzione, posa, movimento nel tempo. Ventidue metodi in più sull'host.
+The first item of the previous TODO, closed. The world has characters in it:
+position, direction, pose, movement over time. Twenty-two more methods on the
+host.
 
 ```
-43 metodi implementati su 128 usati, che coprono 5.814 chiamate su 6.634 (87%)
-                                              (erano 22 metodi e il 63%)
+43 methods implemented of 128 used, covering 5,814 calls of 6,634 (87%)
+                                            (it was 22 methods and 63%)
 ```
 
-- Le **quattro direzioni** sono `0:+Z 1:−Z 2:−X 3:+X`, un'enumerazione ad assi
-  accoppiati che nessuno avrebbe indovinato — 2 e 3 sono opposti fra loro, non
-  consecutivi. L'hanno decisa due oracoli indipendenti che concordano: chi si
-  gira e poi cammina cammina avanti (75% sulla cella più grossa), e Pizzaro e
-  Rosy che si parlano da −1,6 e +1,6 in `mapevent_f80`.
-- **Una casella vale 1,6, e un personaggio è alto una casella**: gli argomenti
-  di `CreateNpc` sono multipli di 1,6, e i 31 modelli NPC misurano 1,60 esatti
-  con l'origine ai piedi. Due file che non si conoscono, stessa scala.
-- **I personaggi non hanno scheletro**: i figli di un nodo sono fotogrammi
-  interi distanziati di 2,0 (162 su 200), non parti. Il gioco anima scambiando
-  la mesh, come un gioco a sprite — e `SetNpcNode(nome, 0..3)`, che sceglie un
-  figlio per ordinale, lo conferma per una via indipendente. Da qui anche il
-  perché lo skinning stia in un file solo su tutto il disco.
-- **`MoveNpc` non blocca**: a parità di velocità e di attesa le distanze
-  percorse sono 1,6 — 3,2 — 4,8, cioè l'attesa che segue non cronometra niente.
-- Due modalità nuove del visualizzatore: `view.py char <modello>` per guardare
-  in faccia un personaggio con le sue pose in fila, e `view.py event <script>`
-  per eseguire un evento **su un palco vuoto, senza mappa**. La seconda è nata
-  da un ostacolo reale: le mappe di questo gioco sono piene e hanno il
-  soffitto, gli NPC finivano dentro un muro e non si vedeva se il registro
-  funzionasse.
+- The **four directions** are `0:+Z 1:−Z 2:−X 3:+X`, an enumeration in paired
+  axes that nobody would have guessed — 2 and 3 are opposite each other, not
+  consecutive. Two independent oracles that agree decided it: whoever turns
+  and then walks walks forward (75% on the largest cell), and Pizzaro and Rosy
+  talk to each other from −1.6 and +1.6 in `mapevent_f80`.
+- **A cell is 1.6, and a character is one cell tall**: the arguments of
+  `CreateNpc` are multiples of 1.6, and the 31 NPC models measure exactly 1.60
+  with their origin at the feet. Two files that do not know each other, the
+  same scale.
+- **Characters have no skeleton**: the children of a node are whole frames
+  spaced 2.0 apart (162 of 200), not parts. The game animates by swapping the
+  mesh, like a sprite game — and `SetNpcNode(name, 0..3)`, which picks a child
+  by ordinal, confirms it by an independent route. This is also why skinning
+  appears in only one file on the whole disc.
+- **`MoveNpc` does not block**: at equal speed and wait the distances covered
+  are 1.6 — 3.2 — 4.8, so the wait that follows times nothing.
+- Two new modes of the viewer: `view.py char <model>`, to look a character in
+  the face with its poses in a row, and `view.py event <script>`, to run an
+  event **on an empty stage, with no map**. The second came from a real
+  obstacle: this game's maps are full and have ceilings, the NPCs ended up
+  inside a wall, and you could not see whether the registry worked.
 
-Due cose che i dati hanno smentito lungo la strada, e che vale la pena
-ricordare perché erano tutte e due plausibili:
+Two things the data refuted along the way, worth remembering because both
+were plausible:
 
-- «l'NPC appena creato guarda il giocatore» dà **il 55%**, cioè rumore con una
-  preferenza, e propone come miglior candidato una mappatura sbagliata;
-- `Event/Priest/Priest.ps3.dsb` esiste e si chiama come un nome di `CreateNpc`,
-  ma misura 0,96 × 0,64 e usa `cliff_01.dds`: è la *scenografia* dell'evento,
-  non il prete. La coincidenza di nome sarebbe passata per una risoluzione
-  riuscita se non si fossero guardati i numeri.
+- "a newly created NPC faces the player" gives **55%**, that is noise with a
+  preference, and proposes a wrong mapping as the best candidate;
+- `Event/Priest/Priest.ps3.dsb` exists and is named like a `CreateNpc` name,
+  but it measures 0.96 × 0.64 and uses `cliff_01.dds`: it is the event's
+  *scenery*, not the priest. The coincidence of names would have passed for a
+  successful resolution had the numbers not been looked at.
 
-E una cosa che resta **dichiaratamente irrisolta**, invece che indovinata: dove
-cada nel mondo una cella di `SetPlayerPosition`. La X sta a ~1,6 unità per
-cella su 31 eventi, la Z cambia di un fattore dieci — perché ogni mappa ha la
-propria origine. Quindi il registro annota la cella e non muove nessuno, e dei
-99 nomi del corpus ne colloca 40 (quelli di `CreateNpc`, che sono offset dal
-giocatore) e disegna solo quelli.
+And one thing that stays **declared unsolved**, rather than guessed: where in
+the world a `SetPlayerPosition` cell falls. X is at ~1.6 units per cell over
+31 events, Z changes by a factor of ten — because every map has its own
+origin. So the registry notes the cell and moves nobody, and of the corpus's
+99 names it places 40 (those of `CreateNpc`, which are offsets from the
+player) and draws only those.
 
-## Fatto in sessione 3
+## Session 3
 
-Le due voci in cima al TODO precedente, chiuse entrambe.
+Both items at the top of the previous TODO, closed.
 
-**Fase 1a, l'estrattore ufficiale** — [`extract.md`](extract.md),
-`tools/iso.py`. `extract/` non è più stato locale: è una funzione del disco,
-con manifesto e hash. 2.799 file indicizzati, 2.793 dichiarati per 3,1 GB,
-`sha256` di tutti in 26 secondi, verifica completa in 30.
+**Phase 1a, the official extractor** — [`extract.md`](extract.md),
+`tools/iso.py`. `extract/` is no longer local state: it is a function of the
+disc, with a manifest and hashes. 2,799 files indexed, 2,793 declared for
+3.1 GB, `sha256` of all of them in 26 seconds, full verification in 30.
 
-- Si legge via **UDF**, non ISO9660: i nomi ISO9660 sono troncati a 31 caratteri
-  e in questo gioco i nomi *sono dati* (il materiale riferisce la texture per
-  nome di file). La verifica l'ha dimostrato subito, segnalando come mancanti
-  167 `.pac.gz` che in locale portavano il nome troncato di 7-Zip.
-- Il lettore UDF è scritto a mano perché `pycdlib` rifiuta il disco: i Blu-ray
-  PS3 usano UDF 2.50 con **partizione di metadati**, e gli inode stanno dentro
-  un file che ricopre la partizione fisica. ~150 righe, nessuna dipendenza.
-- Il **manifesto** (`tools/manifest.tsv`, `path · size · sha256`) è l'impronta
-  del disco supportato: hash, non contenuto, quindi sta nel repository.
-- Due ritrovamenti dell'inventario: `MakeLuaDump.exe` e
-  `AdditionEditCharMessage.exe`, utility Windows degli sviluppatori rimaste sul
-  disco stampato, e `Font.bin`.
+- It reads via **UDF**, not ISO9660: ISO9660 names are truncated to 31
+  characters, and in this game names *are data* (a material refers to its
+  texture by file name). Verification proved it at once, by flagging as
+  missing 167 `.pac.gz` that locally carried 7-Zip's truncated name.
+- The UDF reader is hand-written because `pycdlib` refuses the disc: PS3
+  Blu-rays use UDF 2.50 with a **metadata partition**, and the inodes live
+  inside a file that overlays the physical partition. ~150 lines, no
+  dependencies.
+- The **manifest** (`tools/manifest.tsv`, `path · size · sha256`) is the
+  fingerprint of the supported disc: hashes, not content, so it belongs in the
+  repository.
+- Two finds in the inventory: `MakeLuaDump.exe` and
+  `AdditionEditCharMessage.exe`, the developers' Windows utilities left on the
+  pressed disc, and `Font.bin`.
 
-**Il primo render** — [`render.md`](render.md), `tools/view.py`. Una mappa
-caricata, composta e disegnata texturizzata in OpenGL 3.3. `d_1_1_1` esce al
-primo tentativo; `field_16` è riconoscibilmente la campagna del gioco.
+**The first render** — [`render.md`](render.md), `tools/view.py`. A map
+loaded, composed and drawn textured in OpenGL 3.3. `d_1_1_1` comes out at the
+first attempt; `field_16` is recognisably the game's overworld.
 
-E la misura, non l'aneddoto: `view.py sweep` carica **tutto** il disegnabile del
-disco — 627 file, 5.297 sezioni, **54.176.753 vertici**, 30,9 M triangoli in
-**14 secondi** — e risolve 1.903 riferimenti a texture su 1.905. I due mancanti
-sono residui di produzione (`SouthPeak_Logo.ifl` è un *Image File List* di
-3ds Max: dice con che strumenti sono stati fatti gli asset).
+And the measurement, not the anecdote: `view.py sweep` loads **everything**
+drawable on the disc — 627 files, 5,297 sections, **54,176,753 vertices**,
+30.9 M triangles in **14 seconds** — and resolves 1,903 texture references of
+1,905. The two missing are production leftovers (`SouthPeak_Logo.ifl` is a
+3ds Max *Image File List*: it says what tools the assets were made with).
 
-Tre cose imparate guardando:
+Three things learned by looking:
 
-- il **colore per vertice è illuminazione precotta** — verde muschio con gli
-  spigoli a nero — il che conferma per una via indipendente che l'ordine dei
-  canali è RGBA, e avverte l'host di non moltiplicare due volte ciò che è già
-  cotto;
-- le mappe **includono il soffitto**: un sotterraneo dall'alto è una lastra;
-- decodificare i vertici con numpy invece che con un dizionario per vertice fa
-  la differenza fra 14 secondi e inservibile.
+- **per-vertex colour is baked light** — moss green with the edges going to
+  black — which confirms by an independent route that the channel order is
+  RGBA, and warns the host not to multiply twice what is already baked;
+- the maps **include the ceiling**: a dungeon from above is a slab;
+- decoding vertices with numpy instead of a dictionary per vertex is the
+  difference between 14 seconds and unusable.
 
-**Lo skinning, risolto.** Mancavano 50.043 vertici su 54 milioni — lo 0,09% —
-e non era un errore di conteggio: erano le 77 mesh di `Opening.ps3.dsb` che
-nessun nodo aggancia direttamente. Un nodo può agganciare uno **`skin`**, che
-nomina la mesh a +0x20 e porta un array di ossi (indice di nodo + **bind pose
-inversa**) a +0x60. Vedi [`format_dsb.md`](format_dsb.md) §skin.
+**Skinning, solved.** 50,043 vertices of 54 million were missing — 0.09% — and
+it was not a counting error: they were the 77 meshes of `Opening.ps3.dsb` that
+no node references directly. A node can reference a **`skin`**, which names
+the mesh at +0x20 and carries an array of bones (node index + **inverse bind
+pose**) at +0x60. See [`format_dsb.md`](format_dsb.md) §skin.
 
-Sono cadute insieme altre due voci del TODO precedente: la **semantica 9** del
-vertice è l'**indice di osso**, e lo skinning è **rigido** — c'è l'indice ma
-nessun peso. La convenzione delle matrici l'ha decisa un oracolo netto:
-`world(osso) @ Mᵀ` viene identica per tutti gli ossi di una skin, cioè è la
-posa di binding; le altre tre combinazioni no.
+Two more items of the previous TODO fell with it: vertex **semantic 9** is the
+**bone index**, and skinning is **rigid** — there is an index but no weight. A
+clean oracle decided the matrix convention: `world(bone) @ Mᵀ` comes out
+identical for every bone of a skin, so it is the bind pose; the other three
+combinations do not.
 
-E una trappola da ricordare: con la trasformazione del *nodo* la scena di
-apertura sembra un villaggio 3D con qualche pezzo fuori posto, cioè "quasi
-giusta". Con le matrici degli ossi si **appiattisce**, e sembra un errore. Non
-lo è: la catena passa per `oka_s-node` (scala Y 0,04) e `Dummy_2D_pos-node` —
-l'apertura è un fondale **2D visto dall'alto**. Il risultato quasi giusto era
-il più ingannevole dei due.
+And a trap to remember. With the *node* transform the opening scene looks like
+a 3D village with a few pieces out of place, that is "almost right". With the
+bone matrices it **flattens**, and looks like a mistake. It is not: the chain
+passes through `oka_s-node` (Y scale 0.04) and `Dummy_2D_pos-node` — the
+opening is a **2D backdrop seen from above**. The almost-right result was the
+more deceptive of the two.
 
-**Il post-processing YEBIS** — `tools/post.py`, documentato in
-[`render.md`](render.md). I quattro effetti che il fornitore nomina sono
-quattro passate: defocus per cerchio di confusione, glare additivo dal bright
-pass, vignetting, color modification. I parametri vengono dalle **202 chiamate**
-DOF contate negli script (`SetParamDepthofField`: primo argomento 0,37–3,02,
-secondo 0,20–1,50, terzo sempre 0; `SetDofApaerture` sta a 0,70 in 14 casi su
-20). Resta ignota l'unità di misura di quei numeri: non sono distanze di mondo,
-e la risposta sta nell'EBOOT.
+**YEBIS post-processing** — `tools/post.py`, documented in
+[`render.md`](render.md). The four effects the vendor names are four passes:
+defocus by circle of confusion, additive glare from the bright pass,
+vignetting, colour modification. The parameters come from the **202 DOF
+calls** counted in the scripts (`SetParamDepthofField`: first argument
+0.37–3.02, second 0.20–1.50, third always 0; `SetDofApaerture` is at 0.70 in
+14 cases of 20). The unit of those numbers remains unknown: they are not world
+distances, and the answer is in the EBOOT.
 
-Scoperta di passaggio: `createFairyGlareEffect(38.27, 2.68, -23.2)` non prende
-parametri di effetto, prende una **posizione nel mondo**.
+A find in passing: `createFairyGlareEffect(38.27, 2.68, -23.2)` takes no
+effect parameters, it takes a **position in the world**.
 
-Con la catena attiva `field_16` smette di sembrare un modello 3D e comincia a
-sembrare un plastico.
+With the chain on, `field_16` stops looking like a 3D model and starts looking
+like a diorama.
 
-**Il primo dialogo** — [`host.md`](host.md), `tools/host.py` + `tools/font.py`.
-La milestone che valida la tesi del progetto: mappa dal `.pac`, script
-`Devil.lua.eu` eseguito **verbatim** su VM Lua (`lupa`, Lua 5.5), scheduler a
-coroutine, e la battuta a schermo col font del gioco.
-
-```
-377 script di evento su 378 girano, 377 arrivano in fondo, 0 errori
-128 metodi distinti, 6.634 chiamate — 20 metodi fanno il 76% delle chiamate
-```
-
-Perché ci arrivino servono due cose non ovvie: **caricare le librerie
-condivise** (`Event/eventfunction.lua.eu` definisce le funzioni Lua che gli
-eventi chiamano, ed è il package manager a caricarle prima), e **stub
-chiamabili**, perché una tabella permissiva che non risponde a `__call` uccide
-lo script alla prima funzione sconosciuta.
-
-**22 metodi implementati su 128 usati, che coprono il 63% delle chiamate** — i
-primi dieci tutti, 12 dei primi venti. Oltre a dialogo e scelte ci sono ora
-**camera** e **messa a fuoco**, che la misura indicava come il vero grosso di un
-evento: `SetCameraAtBody(distanza, elevazione°, azimut°, bersaglio)` inquadra,
-`SetParamDepthofField` e `SetDofApaerture` pilotano la catena YEBIS, e le due
-pile `BackupCamera`/`RestoreCamera` e `BackupDof`/`RestoreDof` lasciano la
-scena com'era.
-
-Le firme le hanno rivelate gli autori senza volerlo: due helper in
-`eventfunction.lua.eu` sono commentati "camera NPC da destra" e "da sinistra",
-e fra i due cambia **solo il segno del terzo argomento**. Quindi il terzo è un
-azimut, e i primi due distanza ed elevazione.
-
-Tre condizioni di sospensione bastano all'intero corpus: `Wait`,
-`WaitContinue`, `WaitScene`. I globali nativi (`EventClass`, `soundList`) non
-li definisce nessuno script — li forniva il C++ — e qui diventano tabelle
-permissive che ricordano il proprio nome: `soundList.SoundID.SE_quake` vale la
-sua stringa, che è quanto basta per girare e per registrare cosa serve.
-
-Due scoperte di passaggio: il corpus ha **codifiche miste** (13 script in
-Shift-JIS fra 365 UTF-8), e nell'atlante del font **non esiste il trattino** —
-il gioco scrive `ＴｈーＴｈａｔ` con il prolungamento dei katakana.
-
-### L'acqua si disegna — [`render.md`](render.md), `view.py water_parts()`
-
-La texture c'era, e stava dove aveva senso che stesse: **`data/shaders/water_col.dds`**,
-uno dei due soli `.dds` sciolti del disco insieme a `Sun.dds`. Stare in
-`shaders/` invece che in un pacchetto di mappa è la dichiarazione che non
-appartiene a nessuna mappa: la disegna il motore.
-
-È 128×128 non compressa, un reticolo blu notte di **16 quadretti per lato** —
-cioè i sedici dot di una casella, quindi si posa una copia per cella e il
-reticolo si allinea da solo.
-
-La quota non è dichiarata da nessuna parte, ma il mondo la stringe da tutte e
-due le parti: il fondale sta due caselle esatte sotto la riva (52,9%) e la riva
-sta a 0,00 (50%), quindi in mezzo c'è **un solo multiplo di una casella**. Ogni
-specchio prende la sua propagando il minimo dalle rive, così in `Field_16` il
-lago di montagna resta a +11,2 mentre il mare sta a −2,0.
+**The first dialogue** — [`host.md`](host.md), `tools/host.py` +
+`tools/font.py`. The milestone that validates the project's thesis: a map from
+the `.pac`, the script `Devil.lua.eu` run **verbatim** on a Lua VM (`lupa`,
+Lua 5.5), a coroutine scheduler, and the line on screen in the game's font.
 
 ```
-celle di mappa coperte dalla geometria: 436.043/480.731 = 90,7%
-  di cui acqua, ora disegnata:           40.964 celle
-  restano nere in un fotogramma:          8.503 celle = 1,8% della mappa
+377 event scripts of 378 run, 377 reach the end, 0 errors
+128 distinct methods, 6,634 calls — 20 methods make 76% of the calls
 ```
 
-`Field_16` è un'isola nel mare e `Field_31` un arcipelago; prima erano isole
-nel nulla. Il nero che resta è vuoto vero — celle senza geometria *e* senza
-fondale — e non è più una zona ma dei buchi.
+Getting there takes two things that are not obvious: **loading the shared
+libraries** (`Event/eventfunction.lua.eu` defines the Lua functions the events
+call, and the package manager loads them first), and **callable stubs**,
+because a permissive table that does not answer `__call` kills the script at
+the first unknown function.
 
-Trovata di passaggio nella stessa cartella: `graphics.ps3.tpk` contiene
-`ref_01`, che è un **CUBEMAP**, cioè l'environment map che `renderer.md` dà per
-mancante.
+**22 methods implemented of 128 used, covering 63% of the calls** — all of the
+top ten, 12 of the top twenty. Besides dialogue and choices there are now
+**camera** and **focus**, which the measurement pointed to as the real bulk of
+an event: `SetCameraAtBody(distance, elevation°, azimuth°, target)` frames the
+shot, `SetParamDepthofField` and `SetDofApaerture` drive the YEBIS chain, and
+the two stacks `BackupCamera`/`RestoreCamera` and `BackupDof`/`RestoreDof`
+leave the scene as it was.
 
-### Le schermate di sistema si compongono — [`ui.md`](ui.md), `tools/ui.py`
+The authors gave the signatures away without meaning to: two helpers in
+`eventfunction.lua.eu` are commented "NPC camera from the right" and "from the
+left", and between the two **only the sign of the third argument** changes. So
+the third is an azimuth, and the first two are distance and elevation.
 
-I 137 descrittori UI erano letti da tre sessioni e mai eseguiti. Ora **119
-schermate** si compongono: la scena al suo posto, le scritte dove il descrittore
-le mette, il cursore dove dice lui.
+Three suspension conditions are enough for the whole corpus: `Wait`,
+`WaitContinue`, `WaitScene`. The native globals (`EventClass`, `soundList`)
+are defined by no script — the C++ supplied them — and here they become
+permissive tables that remember their own name: `soundList.SoundID.SE_quake`
+evaluates to its own string, which is enough to run and to record what is
+needed.
 
-Due misure hanno reso possibile comporre invece di rasterizzare:
+Two finds in passing: the corpus has **mixed encodings** (13 scripts in
+Shift-JIS among 365 in UTF-8), and the font atlas **has no hyphen** — the game
+writes `ＴｈーＴｈａｔ` with the katakana prolonged-sound mark.
 
-- **lo schermo virtuale è uno solo.** Che i descrittori parlassero in 1280×720
-  era noto; che ci vivessero anche le **scene 3D** no. La dissolvenza a piena
-  pagina misura `x [0, 1280]`, `y [-720, 0]` al decimale, e la Z non è
-  profondità ma il piano di sovrapposizione (−90 la dissolvenza, 0 il fronte).
-- **l'interfaccia è fatta di rettangoli**: dei 16.494 triangoli delle 115 scene,
-  16.492 sono piatti in Z e **16.494 su 16.494** hanno due lati sugli assi.
+### Water is drawn — [`render.md`](render.md), `view.py water_parts()`
 
-E la ragione per cui in tre sessioni nessuno le aveva eseguite: **a riposo sono
-chiuse**. Il nodo di ogni pezzo di `SelectA` ha scala **0** su un asse mentre la
-mesh sotto è intera (149×99), e le schermate a scorrimento parcheggiano i pezzi
-fuori campo — il menu degli oggetti arriva a `x=2193`. Ad aprirle è
-l'`Animation` che il descrittore dichiara; il `.dsb` non ha curve, quindi il
-moto lo mette il motore e la posa finale è la scala a 1 (`view.load(unfold=True)`).
+The texture was there, and where it made sense for it to be:
+**`data/shaders/water_col.dds`**, one of only two loose `.dds` on the disc,
+together with `Sun.dds`. Sitting in `shaders/` rather than in a map package is
+the declaration that it belongs to no map: the engine draws it.
 
-## Da fare subito
+It is 128×128, uncompressed, a midnight-blue lattice of **16 squares per
+side** — the sixteen dots of a cell, so one copy is laid per cell and the
+lattice lines up by itself.
 
-### I gimmick, con la stessa domanda dei nemici
-La voce sul pattugliamento è **chiusa in sessione 11** e non con una lettura:
-gira, vedi sopra e [`actor.md`](actor.md). Ma la scoperta che l'ha aperta
-travolge anche la seconda metà della voce di sessione 8, che dava i gimmick per
-«parametrizzati in chiaro, implementati in C++». In `../lua/Object/gimmick/`
-ce ne sono **21 scritti per esteso** — `Jar`, `Grass`, `SwordPedestal`,
-`SpringFairy`, i sei `OrbAltar`, i sette `BossMarker`, i tre `Well`,
-`lava_fountain` — e la griglia dichiara dove stanno. Stessa forma: un
-`Initialize`, un `Update`, e l'infrastruttura ora c'è tutta (`actor.Troupe`).
+The height is declared nowhere, but the world pins it from both sides: the
+backdrop is exactly two cells below the shore (52.9%) and the shore is at 0.00
+(50%), so in between there is **only one multiple of a cell**. Each body of
+water takes its own by propagating the minimum from its shores, so in
+`Field_16` the mountain lake stays at +11.2 while the sea is at −2.0.
 
-L'aggancio però **non è più il modello**: un vaso non carica `EN_ENEMY_NN`, e
-la cella lo nomina per classe (`Jar` sta fra le classi di `Grid.objects`).
-Quindi la prima domanda è come si lega la classe di cella al file, e la
-risposta più probabile è il nome stesso.
+```
+map cells covered by geometry: 436,043/480,731 = 90.7%
+  of which water, now drawn:            40,964 cells
+  still black in a frame:                8,503 cells = 1.8% of the map
+```
 
-Nella stessa cartella restano da guardare i **100 file `Object/item/`** e i
-**266 `Object/npc/`**, che non sono i 33 già usati (quelli stanno in
-`Object/`): sono probabilmente le istanze per personaggio, non gli archetipi.
+`Field_16` is an island in the sea and `Field_31` an archipelago; before, they
+were islands in nothing. The black that remains is real void — cells with no
+geometry *and* no backdrop — and it is no longer an area but holes.
 
-### L'animazione dichiarata, che adesso serve
-`AddAnimation(i, secondi)` e `InitializeAnimation` sono 185 chiamate ed erano
-fuori dal moto, quindi non urgenti. Ora lo sono: **è così che il Re fermo
-respira**, e più in generale è il ciclo di pose dichiarato dal file invece che
-dedotto dai suffissi `_a`/`_b`. Sostituirebbe con un dato ciò che
-`entity.enemy_motion` ricava da dodici file di minigioco.
+A find in passing in the same folder: `graphics.ps3.tpk` contains `ref_01`,
+which is a **CUBEMAP** — the environment map that `renderer.md` lists as
+missing.
 
-### Cosa resta scoperto dei nemici
-Misurato, non congetturato: 98 metodi su 134, cioè il 27,3% delle chiamate,
-quasi tutti fuori dal moto — animazione, colore, suono, effetti, e il
-**combattimento** (`IsHitGuardPlayer`, `GetPlayerHP`, `Throw`), che è un
-sottosistema che il progetto non ha ancora, non un buco in questo.
+### The system screens are composed — [`ui.md`](ui.md), `tools/ui.py`
 
-Due punti del moto sono dichiarati non letti, ed è bene restino visibili: il
-flag di `Move(false)` (17 chiamate, sempre `false`, significato non scritto da
-nessuna parte) e la curva di `Fly`, dove gli script passano una gravità che qui
-diventa un avvicinamento lineare alla quota.
+The 137 UI descriptors had been read for three sessions and never run. Now
+**119 screens** are composed: the scene in its place, the text where the
+descriptor puts it, the cursor where it says.
 
-*(Le tre code di sessione 8 sono chiuse in sessione 10; le due di sessione 10
-in sessione 11: 5080 è Togetoge e la classe è il verso del movimento, `+0x08` è
-una coppia di byte con `b1 >= b0` sempre. Vedi sopra.)*
+Two measurements made it possible to compose rather than rasterise:
 
-### Cosa misura l'intervallo di `+0x08`
-La sola coda ancora aperta di quel filone, e adesso è una domanda precisa:
-`(b1, b0)` con `b1 >= b0` in 482.180 celle su 482.180, valori da 0 a 31, e
-`+0x0C = 1 << b0`. Concorda con la quota del pavimento all'84% nei sotterranei
-e al 68% in campagna, satura a 31 nella mappa più alta del disco, e **non** è
-limitato dal tetto per mappa di `map_param.lua`. Da riprendere dal Lua, ora che
-sappiamo che 869 sorgenti sono in chiaro: se qualcuno legge quella griglia,
-la legge lì.
+- **there is only one virtual screen.** That the descriptors spoke in
+  1280×720 was known; that the **3D scenes** lived there too was not. The
+  full-page fade measures `x [0, 1280]`, `y [-720, 0]` to the decimal, and Z
+  is not depth but the overlay plane (−90 the fade, 0 the front).
+- **the interface is made of rectangles**: of the 16,494 triangles of the 115
+  scenes, 16,492 are flat in Z and **16,494 of 16,494** have two sides on the
+  axes.
 
-### Cosa succede quando si sceglie una voce
-`Screen` dice *quale* voce si è scelta, non cosa fa il gioco dopo. Il legame
-fra una schermata e la successiva è dichiarato **due volte su 136** (sessione
-9), e sempre e solo per aprire una finestra di conferma. Per le altre 134 non
-c'è, e stavolta è stato cercato: nessun valore che nomini un'altra schermata, e
-l'unica chiave che si chiami `Next` è uno scarto di 49 px fra due cifre.
-**L'unico posto rimasto è l'EBOOT**, e questa è la seconda voce che ci finisce
-contro dopo il pattugliamento.
+And the reason nobody had run them in three sessions: **at rest they are
+closed**. The node of every piece of `SelectA` has scale **0** on one axis
+while the mesh under it is whole (149×99), and the sliding screens park their
+pieces off screen — the items menu reaches `x=2193`. What opens them is the
+`Animation` the descriptor declares; the `.dsb` has no curves, so the engine
+supplies the motion and the final pose is scale 1
+(`view.load(unfold=True)`).
 
-## Da fare poi
+---
 
-- **`SAV`**: i tre salvataggi. Nessun magic, ma la stessa coppia
-  `u32 len + UTF-8` degli `.edt`, e `test.SAV` porta dentro
-  `edt/preset/pumpkin.edt` — quindi riferisce un preset per percorso invece di
-  incorporarlo. (L'`EDT` è chiuso, vedi sessione 7.)
-- **Le due utility sul disco**: `MakeLuaDump.exe` (9,5 kB) e
-  `AdditionEditCharMessage.exe` (14,5 kB). PE x86 minuscoli; dal nome, il primo
-  fa il lavoro di `tools/lua_tables.py` e può confermarne la semantica a costo
-  quasi nullo.
-- **Semantica 8**, il secondo set di UV che accompagna gli indici di osso.
-- **Campi minori del record `skin`**: i puntatori a +0x24 / +0x2C, che puntano
-  dentro il record stesso, e i contatori a +0x28 / +0x3C.
-- **Campi di materiale ancora senza nome**: i 43 identificativi di shader
-  (+0x28), un secondo colore a +0xC4, la coppia `(0.2, 0.8)` a +0xD4 che ha la
-  forma di bias/scala di Fresnel, i bitfield di stato a +0x164/+0x168, e i tag
-  della tabella di binding.
-- **Fase 1d**: clustering dei 497 metodi per dominio. Nota: `host.py coverage`
-  fornisce ora il dato che serviva davvero — non quanti metodi esistono, ma
-  quanto sono chiamati. 106 dei 497 bastano a coprire tutti gli eventi.
-- **I 41 script di evento non conversazionali**: 1 su 378 non arriva in fondo,
-  vale la pena guardare perché.
+## Method that has worked
 
-## Quando servirà l'EBOOT (Fase 3)
+It bears repeating, because it solved five formats in a row: **use the
+constraints the format itself provides as the test**, instead of guessing.
 
-Non è ancora stato toccato, e in sessione 11 una delle due voci che ci
-puntavano contro **se n'è andata**: il pattugliamento dei nemici è in chiaro,
-in `all.lua.eu`, e a mancare era la nostra ricerca. Ne resta una —
+- `TPKG`: DXT3 against DXT5 was decided by looking at the alpha channel
+  decoded both ways. The wrong interpretation produces regular horizontal
+  bands.
+- `DSBF` vertex: the sum of the declared sizes must give *exactly* the
+  stride, which the chunk declares by another route (`vb_size / n_vert`). Two
+  independent fields that must agree: 8,707 of 8,707.
+- `DSBF` positions: they must **fill** the record's bounding box, not merely
+  fit inside it. And the composed scene must fill the header's, which tests
+  the hierarchy, the quaternions and the scales in one go.
+- `MAP_ALIGNMENT`: in a format of **variable-length records**, walking the
+  file to the end is the best oracle there is. If the layout is right you
+  finish *exactly* on the last byte after the expected number of records. 170
+  files of 170.
+- **UDF**: the descriptor chain always says where the next thing is. There
+  was nothing to guess, only to follow — and whoever guesses stops at the File
+  Set Descriptor, as `pycdlib` does.
 
-- **il seguito di una schermata** (sessione 9): 2 legami dichiarati su 136.
+Corollaries, paid for in the field:
 
-*E la morale è la solita, alla quarta volta: prima di dichiarare che una cosa
-non c'è, contare in quanti posti la si è cercata. Qui erano tre, e il quarto
-era il file più grosso del disco.*
+- When a test gives **0% under every interpretation**, it usually does not
+  mean "wrong hypothesis" but "you are reading the data in the wrong place".
+- When a reference does not resolve and the "unknown" values are **small and
+  ordered**, it is not a hash: it is an index. That holds for the node
+  hierarchy, and it holds for the mesh index inside the `skin` record.
+- When the data has a **property expected a priori** — a map graph can be
+  walked in both directions — that property measures the quality of the
+  extraction.
+- **A residue of 0.09% is information, not noise.** The 50,043 vertices that
+  were missing from the count were not a counting error: they were the whole
+  skinning subsystem, which opened only because the total did not add up.
+  Making the numbers balance *exactly* is what makes the rest visible.
+- **Before deferring to the EBOOT, look at the file names.** The archetype →
+  model table was at the top of the TODO as "the first thing to ask Ghidra".
+  It was in the names of the 237 scripts `npcevent_n<NN><archetype><id>`: in
+  the clear, in a directory already extracted. It is a corollary of a rule
+  the project already has, *look for the field that declares the layout*. A
+  file name is a field too.
+- **When a conclusion is already written in the documents, the test still has
+  to be run again.** That the sections of a `.pac` were already positioned was
+  documented, argued from three observations and confirmed by the image. It
+  was false, 23 times over. The three observations were all *true*; what was
+  wrong was the inference from the fact to the cause. 79% of vertices
+  identical between neighbouring sections is what you get when a dungeon is
+  built from repeated blocks and each screen is drawn around its own origin.
+- **The good test comes from a file that has nothing to do with it.** The
+  composition of the maps could not be checked inside the `.pac`: any reading
+  is self-consistent there. `MAP_ALIGNMENT` decided it — another file, with
+  another purpose, written in the only other endianness on the disc, which
+  declares for reasons of its own where there is map and where there is not.
+- **A sign is an oracle.** The six-argument signature of `SetCamera` fell on
+  a detail: the second argument is −17.72 in one call, and a negative
+  distance does not exist. Nothing more was needed to know that reading was
+  wrong, and that an elevation belonged in its place.
+- **Two weak oracles that agree are worth more than one strong one.** The
+  four directions were decided where a mechanical statistic (who turns and
+  then walks) met a hand reading of a dialogue. Alone, the first gave 75% on
+  one cell and nothing on the others, and the second was an anecdote.
+  Together they leave no way out, because they are wrong in different ways.
+- **An oracle at 55% is not "almost right", it is noise with a preference.**
+  "The NPC faces the player" looked like an obvious premise, and it
+  confidently proposed a wrong mapping. The threshold is not "better than
+  chance": it is "sharp enough that it cannot be anything else".
+- **A name coincidence is not a resolution.** `Event/Priest/Priest.ps3.dsb`
+  exists, is named like an NPC, and is not that NPC. What said so was not the
+  name but the measurement: 0.64 high where a character is 1.60.
+- **The "almost right" result is the most dangerous one.** Skinned meshes
+  drawn with the node's transform gave a plausible 3D village with a few
+  pieces out of place — an error that would have been filed as a detail. The
+  correct reading flattens the scene, and it *looks* wrong. It was not the eye
+  that decided but the determinant of the matrix, which led back to two nodes
+  in the chain called `oka_s` (Y scale 0.04) and `Dummy_2D_pos`. When an image
+  convinces and the numbers do not, the numbers are right.
 
-e poi, come prima:
+- **A leftover that is an exact multiple of a known structure says where the
+  error is.** The first walk of the `EDT` stopped 24 bytes before the end, and
+  24 is exactly six floats, that is the tail of a part. There was no need to
+  search: recognising the number was enough. *When the count does not add up,
+  look at how much it is off by before looking at where.*
+- **What only we need is not declared.** Where a room begins and ends is not
+  on the disc, and three independent roads confirm it (the screen at 95% but
+  not aligned, the tag that turns out to be the dungeon, the nearest marker at
+  75.7%). It is not missing data: the engine has no use for the region,
+  because to register entering a room a **trigger** is enough — and that is
+  why the observers are sparse and two in three sit inside the solid instead
+  of on the floor. *Before searching long for a piece of data, ask whether the
+  game needed it.*
+- **When two things that should differ come out identical, the field that
+  tells them apart is one you are not reading.** The three rooms
+  `room_on_02`, `room_off_02` and `room_still_02` came out identical pixel for
+  pixel, and it looked like a broken filter. The filter worked: the three have
+  the same mesh, the same position, the same UVs and the same texture, and
+  what tells them apart is the material's `diffuse` — 1.0 / 0.5 / 0.0. *A
+  difference of exactly zero is not a bug in the comparison: it is the
+  statement that you are looking in the wrong place.* It is the twin of the
+  session 6 corollary — data that looks empty may only be closed — taken the
+  other way round: a piece that looks on may only be switched off.
+- **A beautiful pattern needs checking more than an ugly one.** The seven
+  black holes of the dark tower, one per floor, with the first digit of the
+  passage running 1-2-3-4-5-6-7: it seemed obvious that they named the seven
+  temples, and it is what *a designer would have done*. Zero of seven. It was
+  the number of the floor the cell is on — the boring explanation, which was
+  then measured at 99.8% over 2,490 cells. *When a reading is elegant and
+  tells the game's story well, that is exactly where to ask for the bill.*
+- **A recognisable result can be recognisable and wrong.** The first contact
+  sheet of the `EDT`s showed ninety characters, every one identifiable, and
+  the check seemed to have passed: they all had **their backs to the camera**.
+  The one who saw it was someone looking without knowing what to expect, and
+  the defect was a choice never made — which of the two Zs is the front.
+  *That something is recognisable says the chain holds, not that every
+  convention inside it is the right one; and conventions nobody chose do not
+  give an error, they give a mirrored result.* The fix then yielded a
+  measurable property (9 voxels in front against 40 behind) and a third
+  confirmation of "authored facing −Z".
+- **Someone who does not know what they should see is an independent
+  oracle.** The model `c_enm_01_01` was shown to someone who knew neither its
+  name nor the state of the chain that draws it, and the first word was
+  "rabbit". The descriptor calls it `Killer Rabbit` and the Japanese comment
+  ツノウサギ, horned rabbit. It counts because it **is wrong in a different
+  way** from the numerical checks: those say the bytes add up, this says the
+  thing *means* what it should. And it counts because it was blind. Looking
+  at the same image already knowing the answer, you see a rabbit in anything,
+  which is exactly how the "almost right" skinning render had passed for
+  good. *When a long chain produces something recognisable, have it
+  recognised by someone who does not know what to expect.*
+- **A name coincidence is not a resolution, even when it is ours.**
+  `data/Balloon` was in the TODO as "the original of the dialogue box", and
+  it is the `CHECK`/`TALK`/`OPEN` sign that floats above a head: 1.6 × 0.6
+  **world units**, not pixels. It is the same error as `Priest.ps3.dsb`, but
+  made by us and then written into the documents, where it waited for three
+  sessions. Looking at the unit of measure was enough to refute it. *The
+  TODO's items are not verified results: they have to be tested like
+  everything else.*
+- **A field that never varies is not the field its name says.** `Start` was
+  read as the start of the clip on the timeline, and it is 0 in all 36 `In`, 1
+  in all 33 `Main`, 2 in all 36 `Out`. A time determined by the name is not a
+  time: it is an index. *The first thing to ask of a numeric field is how much
+  it varies; if it is constant per class, the name is lying.*
+- **Two missing ends are not the same problem as one.** "The animation is
+  missing" was a single item and it held two things. The opening, for which
+  the disc has the closed pose (scale 0), the open one (the whole mesh) and
+  the duration — so it can be rebuilt without inventing anything; and the
+  scrolling, for which it has only the parked position. Interpolating needs
+  two ends, and separating them shrinks the question for the EBOOT from "the
+  screens' animation" to "where 15 pieces land in 5 screens".
+- **A hole in the data can be a hole in the walker.** `Option`'s indices
+  jumped from 9 to 20, and it looked as if the disc did not declare ten clips.
+  It did: `Volume` is an **array** instead of a dictionary, and a walker that
+  only descends into dictionaries skips it. That the hole was exactly as wide
+  as the scene's ten `Volume00…Volume09` nodes was the clue, and it was
+  visible before the cause was found. *A hole of suspiciously meaningful size
+  should be looked for in your own reader before the data.*
+- **A control has to be measured together with the oracle, not after it.**
+  "The pivot puts the growth edge on the origin" gave 87.3%, which looks like
+  a result. The same test giving 76% on the full-scale pieces says it is not.
+  Without the control it would have gone into the documents as a reading of
+  the format, and it was nothing but the way a scale works.
+- **Data that looks empty may only be closed.** The system screens composed
+  black, and it looked like a defect in reading the textures or the UVs. The
+  geometry was all there: what hid it was a **zero in a scale**, and the rest
+  pose of an interface is the closed pose. Before looking for what is missing,
+  check whether what is there has zero volume.
+- **Where a file is *not* is as much information as what it contains.** The
+  water texture is in no map package and no character package: it sits loose
+  in `data/shaders/`, together with the sun. That folder says "the engine
+  draws this", the same thing the `destructionWall` absent from the `.pac` and
+  the backdrop absent from the drawing were saying. It is worth looking at
+  *where* things are before asking what they contain.
+- **If a declared thing is in none of the files that describe the world, it
+  is not a reading defect.** The `destructionWall` is not in the `.pac` and
+  not in the `.DPK`: 0% and 0%. Looking harder would have been wasted, because
+  the absence *was* the information. The engine builds that wall at runtime,
+  and indeed the Lua has `AT_DESTRUCTION_WALL` among its 33 actor types. It is
+  the same form of reasoning that had already given the skinning, but in
+  reverse: there a residue of 0.09% was a subsystem, here a clean zero is a
+  statement of architecture.
+- **An experiment that gives zero should be reported all the same.** Opening
+  every breakable wall gains **not one cell** over 78 maps, and knowing that
+  the world behind them was already reachable is worth as much as a gain: it
+  says the 33% not reached lies elsewhere.
+- **A rule made symmetric out of caution has to be tested like the others.**
+  Climbing and descending one cell was a single choice, made so as not to
+  walk down off roofs. Tested on its own, descent saturates at once: 257
+  inhabitants with a limit of one cell and with no limit at all. The caution
+  was right, but now it is a result.
+- **A cautious limit is an invented number like any other.** The cap of 96
+  subdivisions in the seeding had been set so as not to blow up memory, and
+  it looked like the careful choice. On a third of `FIELD_07`'s triangles it
+  made the sampling step wider than a cell — exactly the damage the seeding
+  was there to prevent. Removing it costs 27%. *A cap set out of caution has
+  to be measured against the thing it must guarantee, not against the fear
+  that suggested it.*
+- **Fixing a wrong reading can make the measurement worse, and that does not
+  mean the fix was wrong.** Putting the levels below zero back took the cells
+  reached from 63% to 41%. The first instinct — go back — would have restored
+  the number and kept the defect. What had happened is that the recovered
+  level was the **backdrop**, and finding that out then gave the water mask
+  for free. *A right correction can uncover a second defect the first one was
+  hiding; the measurement goes down because it is now looking at one more
+  true thing.*
+- **Before choosing between two explanations, count.** "The backdrop has
+  ground above it" looked like the obvious way to recognise it: it ranges from
+  30% to 83% with no break, so it is not a criterion. The count that does
+  decide is a different and banal one — there are 163,878 two-level cells,
+  and in only 758 of them is the lower level not the minimum height — and it
+  also says something about the world: the gallery above the hall exists, and
+  it is 0.16% of the game.
+- **A single entrance measures the entrance, not the map.** `field_14` has
+  six doors, and the first opens onto a 16-cell shelf below a cliff. When the
+  data declares several access points, trying one and reporting the
+  percentage is a measurement error dressed up as a result — and it shows,
+  because the distribution has a tail of maps at 0-3% instead of tapering
+  smoothly.
+- **Two neighbouring names for two different things lead to false
+  conclusions.** "Water and void" was a single item, and from it came the idea
+  that the region tag changed by group of maps. Separate them — water is where
+  the backdrop is the only surface, void is where there is no collision at
+  all — and water has a single tag across the whole disc (`119`, 88%) while
+  void has none, because it is not something anyone declares.
+- **An invented number survives until someone tests it.** Of the whole
+  walking system, only one value did not come from the data: the step, "a
+  knee", 0.6. And it was the only wrong one, by almost a factor of three. It
+  produced a symptom that looked like something else entirely (maps broken
+  into islands, and the overworld much worse than the dungeons) and a
+  plausible, false diagnosis ("geometry is missing"). When a measurement is
+  low, the first suspect is the parameter that has no source.
+- **The quantum before the calibration.** The step did not need calibrating,
+  it needed recognising: ledges are exact multiples of one cell, and between
+  1.7 and 2.5 not a single number changes. If a threshold has a flat interval
+  as wide as the quantisation step, that threshold is not a choice.
+- **A second oracle that saturates is worth more than a distribution.** That
+  ledges are multiples of 1.6 says how the world is built, not what the
+  player can climb. What decided it was an oracle of a different nature: the
+  **inhabitants** the map declares are places the game must be able to reach,
+  and their count saturates at exactly one cell.
+- **Geometry declares surfaces, not volumes.** Inferring the solid from the
+  vertices works only by looking at which way they face: a solid block has
+  vertices only on its faces, and the underside of a floor looks like a floor
+  with free air above it. Count both and you walk inside the rock, and the
+  symptom — maps broken into islands — looks like a threshold problem. It was
+  not: it was a normal.
+- **A list of "the ones that do not have it" ages with the census that
+  produced it.** The six `WiseMan` were on the list of extras with no declared
+  model because that census started from the names used by the *event*
+  scripts, and the sages speak almost only through their own. When the source
+  changes, the list of what is missing has to be redone, not inherited.
+- **Before choosing a starting point, look at what class it is.** `arrivals`
+  held every cell with a `-g` — hundreds of observers and gimmicks — and
+  starting from the first one began the game on top of a wall, with two
+  reachable cells. The entry point has a name in the data: `Exit`.
+- **A host that measures is worth more than a host that stops.** Every
+  unimplemented method is counted instead of raising an error, and every
+  missing native global becomes a table that remembers its own name. So the
+  order of implementation does not have to be guessed: it is read.
+- **But the measurement has to be redone after every implementation.** It was
+  wrong twice running, in two different ways. First: a Lua error ended the
+  coroutine, and an ended coroutine was the criterion by which I counted
+  completions, so errors counted as successes and "376 of 378" was really 89.
+  Second: `Select` came out third with a thousand calls, because a script that
+  repeats the choice until it gets an answer spins idle if `Select` never
+  answers, and every spin counts; implemented, it makes 56 calls and comes
+  twenty-fifth. **The measurement of an API's use is distorted by precisely
+  the pieces you have not built yet.**
 
-- semantica dei metodi di scripting ambigui (497 metodi, firme inferite ma non
-  confermate);
-- valori numerici degli **11 enum nativi** — servono per leggere salvataggi
-  originali, non per far girare il gioco;
-- conferma dell'ipotesi **OROCHI di Silicon Studio** come motore di base — il
-  post-processing è invece già identificato come **YEBIS**, vedi RECON §6.7;
-- uso effettivo delle SPU.
+- **Looking for something and not finding it is a result, if you looked in
+  every place.** Enemy patrolling is not in `MapParameter`, not in
+  `GameParamData`, and the Lua API for enemies has only `PlayEnemy`,
+  `PauseEnemy`, `visibleEnemy` — freeze and show, never move. Put that way,
+  "it is not there" stops being a surrender and becomes the reason the next
+  move is a **decision** (invent it, and declare it) rather than a search.
+- **The file opened for the wrong reason pays off all the same.**
+  `MapParameter` was opened to look for the enemies' motion, which is not
+  there, and it declares the names of 211 maps — data the game loop had been
+  waiting for for eight sessions without anyone looking for it, because nobody
+  knew they wanted it.
+- **A stand-in has to be measured again when the real data arrives.**
+  `LivingId` was "where an enemy lives" until the placement could be read.
+  Now it can, and the comparison gives 47%: the habitat is a classification,
+  not a location. *The stand-in does not become false when the data arrives:
+  it turns out it was not the same thing, and whatever had been inferred from
+  it has to be rewritten.*
+- **A game's secondary mode can be the only place where the main mode is
+  written in the clear.** The world's enemies are C++, but twelve of them also
+  exist as Lua actors in the minigame, with their poses, their period and
+  their type of motion. It is not a copy: they reuse the models **by number**,
+  and the names confirm it twelve times of twelve. *When the main piece is
+  compiled, look for a secondary piece that reuses it — the side mode, the
+  editor, the minigame, the tutorial.*
+- **A constant of ours survives until a file names it.** The period of the
+  walk cycle was 0.25 because it came out of an `int(walk * 4) % 2` written to
+  get two steps a second: nobody had chosen it, and nobody had questioned it.
+  The disc declares it twelve times and it is 0.3. It is the twin of session
+  5's step, but more insidious, because 0.25 produced **no** symptom.
+- **A generalisation from the common case is exposed by counting the
+  cases.** `02_a`/`02_b` was "everyone's" walk cycle, because all 31 NPCs have
+  it. Among the 37 enemies **twelve do not** — four use `04`, eight have no
+  pairs — and for that third the code asked for a pose that does not exist,
+  without an error: it fell back to the first frame and the enemy stood still.
+  *Before writing down a constant taken from the case in front of you, count
+  over which population you saw it.*
+- **A hypothesis becomes refutable only when the data that measures it
+  arrives, and then it has to be measured at once.** "The enemies with no
+  floor are the flying ones" had been written as the motivation for an
+  implementation choice, and it seemed obvious. The minigame brought the
+  `Type` field, and the count says 2.3% against 4.0% — if anything, the
+  opposite. *A plausible motivation written in a comment is an unverified
+  hypothesis dressed up as an explanation.*
+- **An external source is wrong in a way all its own, and that is why it is
+  worth having.** A walkthrough is written for playing, not for reading
+  bytes: it knows nothing of our fields and cannot agree with us to be
+  polite. Four readings inferred from the bytes alone turned up in it without
+  being looked for — the placement sets, FROM Mode's profile, the two enemies
+  with no habitat, the eight bosses with their temples. It is the same form of
+  proof as session 7's "rabbit" — someone who does not know what they should
+  see is an independent oracle — but on a scale a single image does not reach.
+  *When a reading concerns what the player experiences, there is already a
+  literature describing it from the other side of the screen.*
+- **An "unknown" field can be the field that holds everything else
+  together.** The cell's +0x10 had been marked `?` for five sessions while
+  three censuses — map objects, enemies, NPCs — were kept apart because they
+  looked like three problems. They were one numbering. *Before opening a new
+  front, count how many fields already read are still without a name: a `?`
+  in a structure that is walked end to end is not a hole, it is work not
+  done.*
+- **A name that does not find its file may be a function.** "22 names of 25
+  have no script of that name" was in the TODO as a negative result, and the
+  search was looking for files. `gimmick_grass4` is a function inside
+  `gimmick_grass.lua.eu`, and searched for as functions they resolve 25 of 25.
+  It is the twin of the corollary "a file name is a field too": *so is a
+  function name, and the level at which a piece of data names something has
+  to be chosen, not assumed.*
+- **Two subsets of equal size that never touch are the same set.** `A`, `B`,
+  `C` have the same species, almost the same counts, and zero cells in common
+  across the whole disc. Each of those facts alone can be explained in many
+  ways; together they leave one. And the measurement that settles it is the
+  *geometric* one: if they were squads their boxes would be small and
+  separate, and instead they are 88% the same box.
+- **The irregular case should be kept, not normalised.** `F`, `G`, `H` break
+  the parallel of `A`, `B`, `C` — more cells, more species, different counts
+  — and the temptation was to read them as a second, identical triple. The
+  break is what identifies them: that asymmetry *is* the description of FROM
+  Mode.
 
-`EBOOT.BIN` è un SELF con `key_revision 0x0001` (2010, chiavi retail
-pubbliche), decrittabile offline verso un ELF PPC64 big-endian; ora è estratto
-(`iso.py extract boot`). Nota utile: i file `DSBF` sono immagini di memoria
-scritte con `memcpy` di struct C++, quindi **le stesse struct saranno
-riconoscibili in Ghidra** e daranno i nomi dei campi finora dedotti.
+And the most general moral: before inferring a layout, **look for the field
+that declares it**. That holds for scripts too: `Font.lua.eu` declares the
+whole font, and the VM reads it better than any parser of ours.
 
-## Metodo che ha funzionato
+## Environment
 
-Vale la pena ripeterlo, perché ha risolto cinque formati di fila: **usare come
-test i vincoli che il formato stesso fornisce**, invece di congetturare.
-
-- `TPKG`: DXT3 contro DXT5 deciso guardando il canale alfa decodificato nei due
-  modi — l'interpretazione sbagliata produce bande orizzontali regolari.
-- `DSBF` vertice: la somma delle dimensioni dichiarate deve dare *esattamente*
-  lo stride, che il chunk dichiara per un'altra strada (`vb_size / n_vert`).
-  Due campi indipendenti che devono coincidere: 8.707 su 8.707.
-- `DSBF` posizioni: devono **riempire** il bounding box del record, non solo
-  starci dentro. E la scena composta deve riempire quello dell'header — che
-  mette alla prova gerarchia, quaternioni e scale in un colpo solo.
-- `MAP_ALIGNMENT`: in un formato a **record di lunghezza variabile**, percorrere
-  il file fino in fondo è l'oracolo migliore che esista — se il layout è giusto
-  si finisce *esattamente* sull'ultimo byte dopo il numero di record atteso.
-  170 file su 170.
-- **UDF**: la catena dei descrittori dice sempre dove sta la cosa successiva.
-  Non c'era niente da indovinare, solo da seguire — e chi indovina si ferma sul
-  File Set Descriptor, come fa `pycdlib`.
-
-Corollari, pagati sul campo:
-
-- Quando un test dà **0% in tutte le interpretazioni**, di solito non significa
-  "ipotesi sbagliata" ma "stai leggendo i dati nel posto sbagliato".
-- Quando un riferimento non si risolve e i valori "sconosciuti" sono **piccoli
-  e ordinati**, non è un hash: è un indice. Vale per la gerarchia dei nodi e
-  vale per l'indice di mesh dentro il record `skin`.
-- Quando il dato ha una **proprietà attesa a priori** — un grafo di mappe si
-  percorre nei due sensi — quella proprietà misura la qualità dell'estrazione.
-- **Un residuo dello 0,09% è un'informazione, non rumore.** I 50.043 vertici che
-  mancavano all'appello non erano un errore di conteggio: erano l'intero
-  sottosistema di skinning, che si è aperto solo perché il totale non tornava.
-  Far quadrare i conti *esattamente* è ciò che rende visibile il resto.
-- **Prima di rimandare all'EBOOT, guardare i nomi dei file.** La tabella
-  archetipo → modello era in cima al TODO come "la prima cosa da chiedere a
-  Ghidra". Stava nei nomi dei 237 script `npcevent_n<NN><archetipo><id>`, cioè
-  in chiaro, in una directory già estratta. Vale come corollario di una regola
-  che il progetto ha già: *cercare il campo che dichiara il layout*. Anche un
-  nome di file è un campo.
-- **Quando una conclusione è già scritta nei documenti, il test va rifatto lo
-  stesso.** Che le sezioni di un `.pac` fossero già collocate era documentato,
-  argomentato con tre osservazioni e confermato dall'immagine. Era falso, e per
-  23 volte. Le tre osservazioni erano tutte *vere*: a essere sbagliata era
-  l'inferenza dal fatto alla causa — il 79% di vertici identici fra sezioni
-  vicine è ciò che si ottiene quando un sotterraneo è fatto di blocchi
-  ripetuti e ogni schermo è disegnato attorno alla propria origine.
-- **Il test buono viene da un file che non c'entra.** La composizione delle
-  mappe non si poteva verificare dentro il `.pac`: qualunque lettura è
-  autoconsistente. L'ha decisa la `MAP_ALIGNMENT`, che è un altro file, con un
-  altro scopo, scritto nell'unico endianness diverso del disco, e che dichiara
-  per altre ragioni dove c'è mappa e dove no.
-- **Un segno è un oracolo.** La firma di `SetCamera` a sei argomenti è caduta
-  su un dettaglio: il secondo argomento vale −17,72 in una chiamata, e una
-  distanza negativa non esiste. Non serviva altro per sapere che quella
-  lettura era sbagliata, e che al suo posto stava un'elevazione.
-- **Due oracoli deboli che concordano valgono più di uno forte.** Le quattro
-  direzioni le ha decise l'incontro fra una statistica meccanica (chi si gira e
-  poi cammina) e una lettura a mano di un dialogo. Presi da soli, il primo dava
-  75% su una cella e nulla sulle altre, il secondo era un aneddoto. Insieme non
-  lasciano scampo, perché sbagliano in modi diversi.
-- **Un oracolo al 55% non è "quasi giusto", è rumore con una preferenza.**
-  "L'NPC guarda il giocatore" sembrava una premessa ovvia e proponeva con
-  sicurezza una mappatura sbagliata. La soglia non è "meglio del caso": è
-  "abbastanza netto da non poter essere altro".
-- **Una coincidenza di nome non è una risoluzione.** `Event/Priest/Priest.ps3.dsb`
-  esiste, si chiama come un NPC, e non è quell'NPC. A dirlo non è stato il
-  nome ma la misura: 0,64 di altezza dove un personaggio ne fa 1,60.
-- **Il risultato "quasi giusto" è il più pericoloso.** Le mesh skinnate disegnate
-  con la trasformazione del nodo davano un villaggio 3D plausibile con qualche
-  pezzo fuori posto — un errore che si sarebbe archiviato come dettaglio. La
-  lettura corretta appiattisce la scena, e *sembra* sbagliata. A decidere non è
-  stato l'occhio ma il determinante della matrice, che rimandava a due nodi
-  della catena chiamati `oka_s` (scala Y 0,04) e `Dummy_2D_pos`. Quando
-  un'immagine convince e i numeri no, hanno ragione i numeri.
-
-- **Un avanzo che è un multiplo esatto di una struttura nota dice dove sta
-  l'errore.** Il primo percorso dell'`EDT` si fermava 24 byte prima della fine,
-  e 24 è esattamente sei float, cioè una coda di parte. Non serviva cercare:
-  bastava riconoscere il numero. *Quando il conto non torna, guardare di quanto
-  non torna prima di guardare dove.*
-- **Quello che serve solo a noi non è dichiarato.** Dove una stanza cominci e
-  finisca non sta sul disco, e tre strade indipendenti lo confermano (lo
-  schermo al 95% ma non allineato, il tag che è il sotterraneo, il marcatore
-  più vicino al 75,7%). Non è un dato mancante: al motore la regione non serve,
-  perché a registrare l'ingresso in una stanza gli basta un **grilletto** — ed
-  è per questo che gli osservatori sono radi e due su tre stanno dentro il
-  solido invece che sul pavimento. *Prima di cercare a lungo un dato, chiedersi
-  se il gioco ne avesse bisogno.*
-- **Quando due cose che dovrebbero differire escono identiche, il campo che le
-  distingue è uno che non stai leggendo.** Le tre stanze `room_on_02`,
-  `room_off_02` e `room_still_02` uscivano pixel per pixel uguali, e sembrava
-  un filtro rotto. Il filtro funzionava: le tre hanno la stessa mesh, la stessa
-  posizione, le stesse UV e la stessa texture, e a distinguerle è il `diffuse`
-  del materiale — 1,0 / 0,5 / 0,0. *Una differenza di zero esatto non è un bug
-  del confronto: è la dichiarazione che stai guardando nel posto sbagliato.*
-  È il gemello del corollario di sessione 6 — un dato che sembra vuoto può
-  essere solo chiuso — preso per l'altro verso: un pezzo che sembra acceso può
-  essere solo spento.
-- **Un disegno bello va verificato più di uno brutto.** I sette buchi neri
-  della torre oscura, uno per piano, con la prima cifra del varco che fa
-  1-2-3-4-5-6-7: sembrava evidente che nominassero i sette templi, ed è la cosa
-  che *un progettista avrebbe fatto*. Zero su sette. Era il numero del piano
-  su cui la cella sta — la spiegazione noiosa, che poi si è misurata al 99,8%
-  su 2.490 celle. *Quando una lettura è elegante e racconta bene il gioco, è
-  proprio lì che conviene chiedere il conto.*
-- **Un risultato riconoscibile può essere riconoscibile e sbagliato.** Il primo
-  provino degli `EDT` mostrava novanta personaggi tutti identificabili, e la
-  verifica sembrava passata: erano tutti **di spalle**. A vederlo è stato chi
-  guardava senza sapere cosa aspettarsi, e il difetto era una scelta mai fatta
-  — quale delle due Z sia il davanti. *Che una cosa sia riconoscibile dice che
-  la catena regge, non che ogni convenzione dentro sia quella giusta; e le
-  convenzioni non scelte non danno errore, danno un risultato specchiato.*
-  La correzione ha poi fruttato una proprietà misurabile (9 voxel davanti
-  contro 40 dietro) e una terza conferma del «authorati verso −Z».
-- **Chi non sa cosa dovrebbe vedere è un oracolo indipendente.** Il modello
-  `c_enm_01_01` è stato mostrato a chi non conosceva né il nome né lo stato
-  della catena che lo disegna, e la prima parola è stata «coniglio». Il
-  descrittore lo chiama `Killer Rabbit` e il commento giapponese ツノウサギ,
-  coniglio cornuto. Vale perché **sbaglia in un modo diverso** dalle verifiche
-  numeriche: quelle dicono che i byte tornano, questa dice che la cosa
-  *significa* quello che dovrebbe. E vale perché era cieca — guardando la
-  stessa immagine sapendo già la risposta si vede un coniglio in qualunque
-  cosa, che è esattamente come il render «quasi giusto» dello skinning era
-  passato per buono. *Quando una catena lunga produce qualcosa di
-  riconoscibile, farlo riconoscere a chi non sa cosa aspettarsi.*
-- **Una coincidenza di nome non è una risoluzione, anche quando è la nostra.**
-  `data/Balloon` stava nel TODO come «l'originale del riquadro di dialogo», ed
-  è il cartello `CHECK`/`TALK`/`OPEN` che galleggia sopra la testa: 1,6 × 0,6
-  **unità di mondo**, non pixel. È lo stesso errore di `Priest.ps3.dsb`, ma
-  commesso da noi e poi scritto nei documenti — dove ha aspettato tre sessioni.
-  A smentirlo è bastato guardare l'unità di misura. *Le voci del TODO non sono
-  risultati verificati: vanno messe alla prova come tutto il resto.*
-- **Un campo che non varia mai non è il campo che il suo nome dice.** `Start`
-  si leggeva come l'inizio della clip sulla linea del tempo, e vale 0 in tutte
-  e 36 le `In`, 1 in tutte e 33 le `Main`, 2 in tutte e 36 le `Out`. Un tempo
-  determinato dal nome non è un tempo: è un indice. *La prima cosa da chiedere
-  a un campo numerico è quanto vari; se è costante per classe, il nome sta
-  mentendo.*
-- **Due estremi mancanti non sono lo stesso problema di uno.** «Manca
-  l'animazione» era una voce sola e conteneva due cose: l'apertura, di cui il
-  disco ha la posa chiusa (scala 0), quella aperta (la mesh intera) e la durata
-  — quindi si ricostruisce senza inventare nulla; e lo scorrimento, di cui ha
-  solo il parcheggio. Interpolare richiede due estremi, e separarli riduce la
-  domanda per l'EBOOT da «l'animazione delle schermate» a «dove atterrano 15
-  pezzi in 5 schermate».
-- **Un buco nei dati può essere un buco nel percorritore.** Gli indici di
-  `Option` saltavano da 9 a 20, e sembrava che il disco non dichiarasse dieci
-  clip. Le dichiarava: `Volume` è un **array** invece che un dizionario, e chi
-  scende solo nei dizionari lo salta. Che il buco fosse largo esattamente
-  quanto i dieci nodi `Volume00…Volume09` della scena era l'indizio, ed era
-  visibile prima di trovare la causa. *Un buco di dimensione sospettosamente
-  significativa va cercato prima nel proprio lettore che nel dato.*
-- **Un controllo va misurato insieme all'oracolo, non dopo.** «Il pivot mette
-  il bordo di crescita sull'origine» dava l'87,3%, che sembra un risultato. Il
-  76% dello stesso test sui pezzi a scala piena dice che non lo è. Senza il
-  controllo sarebbe entrato nei documenti come una lettura del formato, e non
-  era altro che il modo in cui funziona una scala.
-- **Un dato che sembra vuoto può essere solo chiuso.** Le schermate di sistema
-  si componevano nere, e sembrava un difetto di lettura delle texture o delle
-  UV. La geometria era tutta lì: a nasconderla era uno **zero in una scala**, e
-  la posa a riposo di un'interfaccia è la posa chiusa. Prima di cercare cosa
-  manca, guardare se quel che c'è è a volume zero.
-- **Dove un file *non* sta è un'informazione quanto il suo contenuto.** La
-  texture dell'acqua non è in nessun pacchetto di mappa e in nessuno di
-  personaggio: è sciolta in `data/shaders/`, insieme al sole. Quella cartella
-  dice «questo lo disegna il motore», ed è la stessa cosa che dicevano il
-  `destructionWall` assente dal `.pac` e il fondale assente dal disegno. Vale
-  la pena guardare *dove* stanno le cose prima di chiedersi cosa contengano.
-- **Se una cosa dichiarata non sta in nessuno dei file che descrivono il mondo,
-  non è un difetto di lettura.** Il `destructionWall` non è nel `.pac` e non è
-  nel `.DPK`: 0% e 0%. Cercarlo meglio sarebbe stato sprecato, perché
-  l'assenza *era* l'informazione — quel muro lo costruisce il motore a runtime,
-  e infatti il Lua ha `AT_DESTRUCTION_WALL` fra i 33 tipi di attore. La stessa
-  forma di ragionamento che aveva già dato lo skinning, ma al contrario: là un
-  residuo dello 0,09% era un sottosistema, qui uno zero pulito è una
-  dichiarazione di architettura.
-- **Un esperimento che dà zero va raccontato lo stesso.** Aprire tutti i muri
-  rompibili non guadagna **una cella** su 78 mappe, e sapere che il mondo dietro
-  di loro era già raggiungibile vale quanto un guadagno: dice che quel 33% non
-  raggiunto sta altrove.
-- **Una regola simmetrica per prudenza va provata come le altre.** Salire e
-  scendere di una casella era una sola scelta, fatta per non camminare giù dai
-  tetti. Provata a parte, la discesa satura subito: 257 abitanti da una casella
-  a nessun limite. La prudenza era giusta, ma adesso è un risultato.
-- **Un limite prudente è un numero inventato come gli altri.** Il tetto di 96
-  suddivisioni della semina era stato messo per non far esplodere la memoria, e
-  sembrava la scelta cauta. Su un terzo dei triangoli di `FIELD_07` rendeva il
-  passo più largo di una casella, cioè faceva esattamente il danno che la semina
-  serviva a evitare. Toglierlo costa il 27%. *Un tetto messo per prudenza va
-  misurato contro la cosa che deve garantire, non contro la paura che lo ha
-  suggerito.*
-- **Aggiustare una lettura sbagliata può peggiorare la misura, e non vuol dire
-  che l'aggiustamento fosse sbagliato.** Rimettere i piani sotto lo zero ha
-  portato le celle raggiunte dal 63% al 41%. Il primo istinto — tornare
-  indietro — avrebbe rimesso a posto il numero e lasciato il difetto. Quello che
-  era successo è che il piano recuperato era il **fondale**, e scoprirlo ha poi
-  dato in regalo la maschera dell'acqua. *Una correzione giusta può scoprire un
-  secondo difetto che la prima nascondeva; la misura scende perché adesso
-  guarda una cosa vera in più.*
-- **Prima di scegliere fra due spiegazioni, contarle.** «Il fondale ha terra
-  sopra» sembrava il criterio ovvio per riconoscerlo: va dal 30% all'83% senza
-  uno stacco, cioè non è un criterio. Il conto che invece decide è un altro e
-  banale — le celle a due piani sono 163.878 e in 758 soltanto quello di sotto
-  non è la quota minima — e dice pure una cosa sul mondo: il ballatoio sopra la
-  sala esiste, ed è lo 0,16% del gioco.
-- **Un ingresso solo misura l'ingresso, non la mappa.** `field_14` ha sei porte
-  e la prima dà su un ripiano di 16 celle sotto una rupe. Quando un dato
-  dichiara più punti d'accesso, provarne uno e riportare la percentuale è un
-  errore di misura travestito da risultato — e si riconosce perché la
-  distribuzione ha una coda di mappe allo 0-3% invece di degradare piano.
-- **Due nomi vicini per due cose diverse fanno concludere il falso.** «Acqua e
-  vuoto» era una sola voce, e da lì veniva l'idea che il tag di regione
-  cambiasse per gruppo di mappe. Separate — l'acqua è dove il fondale è l'unica
-  superficie, il vuoto è dove non c'è collisione affatto — l'acqua ha un tag
-  unico su tutto il disco (`119`, 88%) e il vuoto non ne ha nessuno, perché non
-  è una cosa che qualcuno dichiari.
-- **Un numero inventato sopravvive finché nessuno lo mette alla prova.** Di
-  tutto il sistema del camminare, un solo valore non veniva dai dati: il
-  gradino, «un ginocchio», 0,6. Ed era l'unico sbagliato — di quasi tre volte.
-  Ha prodotto un sintomo che sembrava tutt'altro (mappe spezzate in isole, e la
-  campagna molto peggio dei sotterranei) e una diagnosi plausibile e falsa
-  («manca la geometria»). Quando una misura è bassa, il primo sospettato è il
-  parametro che non ha una fonte.
-- **Il quanto prima della taratura.** Il gradino non andava tarato ma
-  riconosciuto: i dislivelli sono multipli esatti di una casella, e fra 1,7 e
-  2,5 non cambia un solo numero. Se una soglia ha un intervallo piatto largo
-  quanto il passo della quantizzazione, quella soglia non è una scelta.
-- **Un secondo oracolo che satura vale più di una distribuzione.** Che i
-  dislivelli siano multipli di 1,6 dice come è fatto il mondo, non cosa il
-  giocatore può salire. A deciderlo è stato un oracolo di natura diversa: gli
-  **abitanti** che la mappa dichiara sono posti in cui il gioco deve poter
-  arrivare, e il loro conto si satura esattamente a una casella.
-- **La geometria dichiara superfici, non volumi.** Dedurre il solido dai
-  vertici funziona solo guardando da che parte sono girati: un blocco pieno ha
-  vertici solo sulle sue facce, e la faccia di sotto di un pavimento sembra un
-  pavimento con l'aria libera sopra. Contandole tutte e due si cammina dentro
-  la roccia, e il sintomo — mappe spezzate in isole — sembra un problema di
-  soglie. Non lo era: era una normale.
-- **Un elenco "di quelli che non ce l'hanno" invecchia con il censimento che
-  l'ha prodotto.** I sei `WiseMan` erano nella lista delle comparse senza
-  modello dichiarato perché quel censimento partiva dai nomi usati dagli script
-  di *evento*, e i saggi parlano quasi solo attraverso il proprio. Quando
-  cambia la fonte, la lista dei mancanti va rifatta, non ereditata.
-- **Prima di scegliere un punto di partenza, guardare di che classe è.**
-  `arrivals` conteneva ogni cella con un `-g` — centinaia di osservatori e
-  gimmick — e partire dalla prima faceva cominciare la partita in cima a un
-  muro, con due celle raggiungibili. Il punto d'ingresso ha un nome nel dato:
-  `Exit`.
-- **Un host che misura vale più di un host che si ferma.** Ogni metodo non
-  implementato viene contato invece che sollevare un errore, e ogni globale
-  nativo mancante diventa una tabella che ricorda il proprio nome. Così
-  l'ordine di implementazione non va indovinato: si legge.
-- **Ma la misura va rifatta dopo ogni implementazione.** È stata sbagliata due
-  volte di fila, in due modi diversi. Primo: un errore Lua terminava la
-  coroutine, e la coroutine terminata era il criterio con cui contavo le
-  conclusioni — gli errori contavano come successi, e "376 su 378" era in
-  realtà 89. Secondo: `Select` risultava terzo con mille chiamate, perché uno
-  script che ripete la scelta finché non ottiene risposta gira a vuoto se
-  `Select` non risponde, e ogni giro conta; implementato, ne fa 56 ed è
-  venticinquesimo. **La misura dell'uso di un'API è distorta proprio dai pezzi
-  che non hai ancora costruito.**
-
-- **Cercare una cosa e non trovarla è un risultato, se si è cercato in tutti i
-  posti.** Il pattugliamento dei nemici non è in `MapParameter`, non è in
-  `GameParamData`, e l'API Lua per i nemici ha solo `PlayEnemy`, `PauseEnemy`,
-  `visibleEnemy` — congelare e mostrare, mai muovere. Detto così, «non c'è»
-  smette di essere una rinuncia e diventa la ragione per cui la prossima mossa
-  è una **decisione** (inventarlo dichiarandolo) invece che una ricerca.
-- **Il file aperto per la ragione sbagliata paga lo stesso.** `MapParameter`
-  è stato aperto per cercarci il moto dei nemici, che non c'è, e dichiara i
-  nomi di 211 mappe — un dato che il giro di gioco aspettava da otto sessioni
-  senza che nessuno lo cercasse, perché nessuno sapeva di volerlo.
-- **Un surrogato va rimisurato quando arriva il dato vero.** `LivingId` era
-  «dove vive un nemico» finché il piazzamento non si sapeva leggere. Ora si
-  legge, e il confronto dà il 47%: l'habitat è una classificazione, non una
-  collocazione. *Il surrogato non diventa falso quando arriva il dato: si
-  scopre che non era la stessa cosa, e va riscritto ciò che si era dedotto da
-  lui.*
-- **Un modo secondario di un gioco può essere l'unico posto in cui il modo
-  principale è scritto in chiaro.** I nemici del mondo sono C++, ma dodici di
-  loro esistono anche come attori Lua del minigioco, con le pose, il periodo e
-  il tipo di moto. Non è una copia: riusano i modelli **per numero**, e i nomi
-  lo confermano dodici volte su dodici. *Quando il pezzo principale è compilato,
-  guardare se un pezzo secondario lo riusa — la modalità di contorno, l'editor,
-  il minigioco, il tutorial.*
-- **Una costante nostra sopravvive finché un file non la nomina.** Il periodo
-  del ciclo di camminata valeva 0,25 perché usciva da un `int(walk * 4) % 2`
-  scritto per avere due passi al secondo: nessuno l'aveva scelto, e nessuno
-  l'aveva messo in dubbio. Il disco lo dichiara dodici volte e vale 0,3. È il
-  gemello del gradino di sessione 5, ma più insidioso, perché 0,25 non
-  produceva **nessun** sintomo.
-- **Una generalizzazione dal caso comune si smaschera contando i casi.**
-  `02_a`/`02_b` era il ciclo di camminata "di tutti", perché tutti i 31 NPC ce
-  l'hanno. Fra i 37 nemici **dodici no** — quattro usano `04`, otto non hanno
-  paia — e per quel terzo il codice chiedeva una posa inesistente, senza
-  errore: cadeva sul primo fotogramma e il nemico restava fermo. *Prima di
-  scrivere una costante presa dal caso che si ha davanti, contare su quale
-  popolazione l'hai vista.*
-- **Un'ipotesi diventa smentibile solo quando arriva il dato che la misura, e
-  allora va misurata subito.** «I nemici senza pavimento sono i volanti» era
-  stata scritta come motivazione di una scelta di implementazione, e sembrava
-  ovvia. Il minigioco ha portato il campo `Type`, e il conto dice 2,3% contro
-  4,0%, cioè semmai il contrario. *Una motivazione plausibile scritta in un
-  commento è un'ipotesi non verificata che si traveste da spiegazione.*
-- **Una fonte esterna sbaglia in un modo tutto suo, ed è per questo che vale.**
-  Un walkthrough è scritto per giocare, non per leggere byte: non sa niente dei
-  nostri campi e non può confermarci per compiacenza. Quattro letture dedotte
-  dai soli byte vi si sono ritrovate senza essere cercate — i set di
-  piazzamento, il profilo di FROM Mode, i due nemici senza habitat, gli otto
-  boss con il loro tempio. È la stessa forma di prova del «coniglio» di
-  sessione 7 — chi non sa cosa dovrebbe vedere è un oracolo indipendente —
-  ma su una scala che un'immagine sola non raggiunge. *Quando una lettura
-  riguarda ciò che il giocatore vive, esiste già una letteratura che la
-  descrive dall'altra parte dello schermo.*
-- **Un campo "ignoto" può essere il campo che tiene insieme tutto il resto.**
-  Il +0x10 della cella era marcato `?` da cinque sessioni mentre tre censimenti
-  — oggetti di mappa, nemici, NPC — venivano tenuti separati perché sembravano
-  tre problemi. Erano una numerazione sola. *Prima di aprire un fronte nuovo,
-  contare quanti campi già letti sono ancora senza nome: un `?` in una struttura
-  che si percorre tutta non è un buco, è lavoro non fatto.*
-- **Un nome che non trova il suo file può essere una funzione.** «22 nomi su 25
-  non hanno uno script che si chiami così» stava nel TODO come un risultato
-  negativo, e la ricerca cercava file. `gimmick_grass4` è una funzione dentro
-  `gimmick_grass.lua.eu`, e cercate come funzioni si risolvono 25 su 25. È il
-  gemello del corollario «anche un nome di file è un campo»: *anche un nome di
-  funzione lo è, e il livello a cui un dato nomina qualcosa va scelto invece
-  che assunto.*
-- **Due sottoinsiemi equinumerosi che non si toccano mai sono lo stesso
-  insieme.** `A`, `B`, `C` hanno le stesse specie, quasi gli stessi conteggi, e
-  zero celle in comune su tutto il disco. Preso da solo ognuno di quei fatti si
-  spiega in molti modi; insieme ne lasciano uno. E la misura che li chiude è
-  quella *geometrica*: se fossero squadre le loro scatole sarebbero piccole e
-  separate, e invece sono l'88% della stessa.
-- **Il caso irregolare va tenuto, non normalizzato.** `F`, `G`, `H` rompono il
-  parallelismo di `A`, `B`, `C` — più celle, più specie, conteggi diversi — e
-  la tentazione era leggerli come una seconda terna uguale. È la rottura a
-  identificarli: quella asimmetria *è* la descrizione di FROM Mode.
-
-E la morale più generale: prima di dedurre un layout, **cercare il campo che lo
-dichiara**. Vale anche per gli script: `Font.lua.eu` dichiara il font intero, e
-la VM lo legge meglio di qualsiasi parser scritto da noi.
-
-## Ambiente
-
-- `extract/` si ricostruisce con `python tools/iso.py extract` e si verifica con
-  `verify --deep`. Estratti: tutti i set tranne `audio` (326 WAV, 638 MB) e
-  `movie` (5 Bink, 1,2 GB), che non servono ancora — `iso.py extract audio movie`
-  quando serviranno. Escluso da git per la politica BYOA; il manifesto no.
-- Residuo da ripulire: in `data/map/pac_data` ci sono ancora i 167 `*_PAC.GZ`
-  con i nomi troncati della vecchia estrazione 7-Zip, 441 MB inutili. I `.pac.gz`
-  corretti sono accanto.
-- 7-Zip esce con **codice 2** e `Headers Error` su questa ISO: è benigno, è la
-  region table in coda. Ma estrae con i nomi ISO9660: usare `iso.py`.
-- Disponibili: Python 3.14 con Pillow, numpy, **pyglet** (OpenGL 3.3) e
-  **lupa** (VM Lua 5.5, installata in sessione 3 — è la dipendenza della Fase
-  4), più 7-Zip, ffmpeg, ImageMagick.
-- Strumenti: `iso.py` estrazione, `tpk.py` texture, `dsb.py` scene, `mapdat.py`
-  grafo del mondo, `dpk.py` collisione, `view.py` + `post.py` render,
-  `font.py` font, `edt.py` personaggi voxel, `host.py` VM Lua e scheduler,
-  `entity.py` registro delle
-  entità, `walk.py` il giro di gioco.
-- `docs/walkthrough/` è una guida di GameFAQs salvata in locale (7 pagine,
-  325 kB di testo estratto in `walkthrough.txt`). Serve come **oracolo
-  esterno**: descrive dall'altra parte dello schermo le stesse cose che noi
-  deduciamo dai byte. Non sta in git — è materiale di terzi.
-- Le verifiche che si eseguono da sole: `python tools/entity.py` (49 proprietà,
-  col bestiario e gli identificativi di attore),
-  `python tools/walk.py` (31 proprietà, su tutte le 170 griglie, coi nemici
-  piazzati e i grilletti di evento),
-  `python tools/view.py sweep ../extract` (54.176.753 vertici, 1.903 texture su
-  1.905), `python tools/view.py layout` (99,3% delle celle solide, 1,8% ancora nero),
-  `python tools/view.py walkabout` (167 mappe percorse a piedi, 97% degli
-  abitanti raggiunti, 365 passaggi su 369 con l'arrivo in piedi),
-  `python tools/dpk.py check` (171 file su 171),
-  `python tools/edt.py check` (6 proprietà, 90 file, 260.860 voxel),
-  `python tools/ui.py check` (14 proprietà, 119 schermate),
+- `extract/` is rebuilt with `python tools/iso.py extract` and checked with
+  `verify --deep`. Since session 14 **every set is extracted**, `audio` (326
+  WAV) and `movie` (5 Bink) included: the recompiled game loads its sounds
+  while the logos play. It is kept out of git under the BYOA policy; the
+  manifest is not.
+- The recompiled game: `build/eboot.elf` (from `tools/self.py`, with a key
+  file kept outside the repository: here PC-ROA's copy of RPCS3's
+  `key_vault.cpp`), `build/recomp` (the generated C++), `build/recomp-build`
+  (CMake + Ninja + clang 22 from MSYS2's `mingw64`, which must be on `PATH`
+  for the build and for SDL3 at run time), `build/flash`, `build/hdd0`,
+  `build/hdd1`. All of `build/` is ignored.
+- `ps3kit/` is a submodule (`git submodule update --init` after a clone).
+  Under gdb, pass `-ex "handle SIGSEGV nostop noprint pass"` before
+  `-x ps3kit/gdb_trace.py`: the kit's write tracking faults on purpose.
+- A leftover to clean up: `data/map/pac_data` still holds the 167 `*_PAC.GZ`
+  with the truncated names from the old 7-Zip extraction, 441 MB of nothing.
+  The correct `.pac.gz` files are beside them.
+- 7-Zip exits with **code 2** and `Headers Error` on this ISO. It is benign:
+  it is the region table at the end. But it extracts with the ISO9660 names,
+  so use `iso.py`.
+- Available: Python 3.14 with Pillow, numpy, **pyglet** (OpenGL 3.3) and
+  **lupa** (the Lua 5.5 VM, installed in session 3 — it is Phase 4's
+  dependency), plus 7-Zip, ffmpeg, ImageMagick.
+- Tools: `iso.py` extraction, `tpk.py` textures, `dsb.py` scenes, `mapdat.py`
+  the world graph, `dpk.py` collision, `view.py` + `post.py` rendering,
+  `font.py` fonts, `edt.py` voxel characters, `host.py` the Lua VM and
+  scheduler, `entity.py` the entity registry, `walk.py` the game loop.
+- `docs/walkthrough/` is a GameFAQs guide saved locally (7 pages, 325 kB of
+  text extracted into `walkthrough.txt`). It serves as an **external
+  oracle**: it describes from the other side of the screen the same things we
+  infer from the bytes. It is not in git; it is third-party material.
+- The checks that run by themselves: `python tools/entity.py` (49 properties,
+  with the bestiary and the actor identifiers),
+  `python tools/walk.py` (31 properties, on all 170 grids, with the placed
+  enemies and the event triggers),
+  `python tools/view.py sweep ../extract` (54,176,753 vertices, 1,903 textures
+  of 1,905), `python tools/view.py layout` (99.3% of the solid cells, 1.8%
+  still black),
+  `python tools/view.py walkabout` (167 maps walked on foot, 97% of the
+  inhabitants reached, 365 passages of 369 with a standable arrival),
+  `python tools/dpk.py check` (171 files of 171),
+  `python tools/edt.py check` (6 properties, 90 files, 260,860 voxels),
+  `python tools/ui.py check` (14 properties, 119 screens),
   `python tools/host.py coverage ../extract/PS3_GAME/USRDIR/data/Event` (87%).
-- `docs/lua_signatures.*` e `docs/lua_tables.*` sono in `.gitignore`: contengono
-  dialoghi e tabelle del gioco. Si rigenerano dai tool in pochi secondi.
+- `docs/lua_signatures.*` and `docs/lua_tables.*` are in `.gitignore`: they
+  hold the game's dialogue and tables. The tools regenerate them in a few
+  seconds.
