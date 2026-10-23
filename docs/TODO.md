@@ -58,10 +58,29 @@ session 14 (`PS3KIT_SPURS=1` shows the task's syscalls and events).
 ### 2. Broken polygons on the character models.
 
 In character creation some models have vertical lines of broken polygons,
-others are right (the user's report). The first models the engine draws:
-compare with the `DSBF` readings of sessions 1-2 (vertex stride and
-attributes declared in the record, [`format_dsb.md`](format_dsb.md)) and with
-`PS3KIT_DRAWDUMP` of one broken draw.
+others are right (the user's report). The first models the engine draws.
+Three suspects, likeliest first, none checked:
+
+1. **Skinning in the vertex program.** The `ubyte4` is the bone index
+   ([`renderer.md`](renderer.md)); if the relative addressing of the
+   constants (the address register picking a bone's matrix) goes wrong for
+   some indices, the vertices on those bones land elsewhere. Which models
+   break would then depend on their bones.
+2. **A vertex or index base** (`VERTEX_DATA_BASE_OFFSET`, `BASE_INDEX`) the
+   renderer does not apply: one part's triangles take another part's
+   vertices.
+3. **A restart index in triangle strips**, not enabled: stray triangles
+   between strips. Least likely: session 2 found triangle lists on 100% of
+   the disc's models, though the running game may draw otherwise.
+
+The oracle is sessions 1-2's: these are voxel models, so **every face is
+axis-aligned**. Capture one broken draw (`PS3KIT_DRAWDUMP`, reaching the
+screen unattended with `PS3KIT_PAD_PRESS`) and find the triangles that are
+not: if the input positions are all aligned and only the transformed ones
+break, it is the skinning (1); if input triangles already join distant
+vertices, it is the indices or their base (2, 3). A screenshot helps too:
+lines that follow the joints (arms, legs) point to the skinning. Compare
+with the `DSBF` readings ([`format_dsb.md`](format_dsb.md)).
 
 ### 3. FMOD's effects, and the real MP3 decoder.
 
